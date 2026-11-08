@@ -56,7 +56,7 @@ public static class AppUpdater
 {
     public const string Owner = "hardy-kevin";
     public const string Repo = "Centre-PC";
-    public static string RepoUrl => $"https://github.com/{Owner}/{Repo}";
+    public static string RepoUrl => $"https://github.com/{Owner}/{Repo}/releases";
 
     public static Version Current
     {
@@ -92,7 +92,7 @@ public static class AppUpdater
                 Version = new Version(v.Major, v.Minor, Math.Max(0, v.Build)),
                 Tag = tag,
                 Notes = root.TryGetProperty("body", out var b) ? b.GetString() : "",
-                PageUrl = root.TryGetProperty("html_url", out var u) ? u.GetString() : RepoUrl + "/releases"
+                PageUrl = root.TryGetProperty("html_url", out var u) ? u.GetString() : RepoUrl
             };
             foreach (var a in root.GetProperty("assets").EnumerateArray())
             {

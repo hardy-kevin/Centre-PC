@@ -52,8 +52,14 @@ public class Config
 /// <summary>Chargement / sauvegarde de la configuration et classement des applis par thème.</summary>
 public static class Settings
 {
-    public static readonly string DataDir = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CentrePC");
+    /// <summary>
+    /// Dossier de Centre PC. Version Store : Windows isole AppData pour les applis du Store (invisible pour l'Explorateur
+    /// et supprimé à la désinstallation) ; on utilise donc Documents\Centre PC pour que les raccourcis rangés et les icônes
+    /// restent visibles par Windows et ne soient jamais perdus.
+    /// </summary>
+    public static readonly string DataDir = Native.IsPackaged
+        ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Centre PC")
+        : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CentrePC");
     public static readonly string StoreDir = Path.Combine(DataDir, "Bureau rangé");
     private static readonly string ConfigPath = Path.Combine(DataDir, "config.json");
 

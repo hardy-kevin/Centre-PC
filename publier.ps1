@@ -16,6 +16,7 @@ if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
 # Construction automatique sur GitHub (fichier placé ici car il ne peut pas être copié directement dans .github)
 New-Item -ItemType Directory -Path '.github\workflows' -Force | Out-Null
 Copy-Item 'Outils\release.yml' '.github\workflows\release.yml' -Force
+Remove-Item 'Outils\README-depot-public.md' -ErrorAction SilentlyContinue
 
 if (-not (Test-Path .git)) { git init -b main | Out-Null }
 if (-not (git config user.name))  { git config user.name 'Kevin Hardy' }

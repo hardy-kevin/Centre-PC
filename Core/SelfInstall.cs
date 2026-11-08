@@ -22,6 +22,7 @@ public static class SelfInstall
     /// <summary>À appeler au démarrage. Renvoie false si l'appli doit s'arrêter (installation faite, nouvelle copie lancée).</summary>
     public static bool HandleStartup(string[] args)
     {
+        if (Native.IsPackaged) return true;   // version Store : installée et désinstallée par le Store
         if (IsInstalledCopy) { Register(); return true; }
         if (args.Contains("--portable") || args.Contains("--updated")) return true;
 

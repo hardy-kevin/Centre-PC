@@ -753,7 +753,7 @@
                                                 <TextBlock x:Name="AppUpdateButtonText" Text="Rechercher une mise à jour" Margin="8,0,0,0"/>
                                             </StackPanel>
                                         </Button>
-                                        <Button Style="{StaticResource BaseButton}" Content="Voir le projet" Click="OpenRepo_Click"/>
+                                        <Button Style="{StaticResource BaseButton}" Content="Voir les versions" Click="OpenRepo_Click"/>
                                     </WrapPanel>
                                     <CheckBox x:Name="AutoAppUpdateCheck" Content="Vérifier automatiquement au démarrage" Margin="0,12,0,0"
                                               Checked="AutoAppUpdate_Changed" Unchecked="AutoAppUpdate_Changed"/>

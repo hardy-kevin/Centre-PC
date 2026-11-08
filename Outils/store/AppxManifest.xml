@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Manifeste de la version Microsoft Store. Les valeurs {…} sont remplies automatiquement par GitHub
+     à partir des « variables » du dépôt (voir Outils/GUIDE-MICROSOFT-STORE.md). -->
+<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+         xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+         xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+         IgnorableNamespaces="uap rescap">
+  <Identity Name="{IDENTITY}" Publisher="{PUBLISHER}" Version="{VERSION}" ProcessorArchitecture="x64" />
+  <Properties>
+    <DisplayName>Centre PC</DisplayName>
+    <PublisherDisplayName>{PUBLISHER_NAME}</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+  <Resources>
+    <Resource Language="fr-FR" />
+  </Resources>
+  <Applications>
+    <Application Id="CentrePC" Executable="CentrePC.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements DisplayName="Centre PC"
+                          Description="Applications, bureau et mises à jour de Windows en un seul endroit."
+                          BackgroundColor="transparent"
+                          Square150x150Logo="Assets\Square150x150Logo.png"
+                          Square44x44Logo="Assets\Square44x44Logo.png">
+        <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png" />
+      </uap:VisualElements>
+    </Application>
+  </Applications>
+  <Capabilities>
+    <!-- Appli de bureau classique (accès au bureau, aux raccourcis, à Windows Update) -->
+    <rescap:Capability Name="runFullTrust" />
+    <!-- Actions ponctuelles en administrateur, toujours avec l'accord de l'utilisateur (raccourcis partagés, flèches) -->
+    <rescap:Capability Name="allowElevation" />
+  </Capabilities>
+</Package>

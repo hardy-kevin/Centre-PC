@@ -76,7 +76,7 @@ public partial class MainWindow : Window
         if (!_online) return;
 
         // Nouvelle version de Centre PC ?
-        if (Settings.Current.AutoCheckAppUpdate) await CheckAppUpdateAsync(fromUser: false);
+        if (Settings.Current.AutoCheckAppUpdate && !Native.IsPackaged) await CheckAppUpdateAsync(fromUser: false);
         // Tri en ligne des applis inconnues, sans action de l'utilisateur
         if (Settings.Current.AutoOnline) await RunOnlineAsync(silent: true);
         // Vérification des mises à jour en arrière-plan (au plus une fois toutes les 12 h) : une pastille prévient
@@ -473,7 +473,13 @@ public partial class MainWindow : Window
             Name = c.Name, Glyph = Settings.GlyphOf(c.Name), Brush = Settings.BrushOf(c.Name),
             Detail = $"{c.Keywords?.Count ?? 0} mots-clés · {_apps.Count(a => a.Theme == c.Name)} applis"
         }).ToList();
-        AppVersionText.Text = $"Version {AppUpdater.Current}";
+        AppVersionText.Text = $"Version {AppUpdater.Current}" + (Native.IsPackaged ? " · Microsoft Store" : "");
+        if (Native.IsPackaged)
+        {
+            AppUpdateStatus.Text = "Les mises à jour sont installées automatiquement par le Microsoft Store.";
+            AppUpdateButtonText.Text = "Ouvrir le Microsoft Store";
+            AutoAppUpdateCheck.Visibility = Visibility.Collapsed;
+        }
         _settingsInit = true;
         AutoAppUpdateCheck.IsChecked = Settings.Current.AutoCheckAppUpdate;
         _settingsInit = false;
@@ -733,6 +739,12 @@ public partial class MainWindow : Window
 
     private async Task CheckAppUpdateAsync(bool fromUser)
     {
+        if (Native.IsPackaged)
+        {
+            // Version Store : c'est le Microsoft Store qui installe les nouvelles versions
+            Updates.Open("ms-windows-store://downloadsandupdates");
+            return;
+        }
         AppUpdateStatus.Text = "Recherche d'une nouvelle version…";
         _online = await Network.IsOnlineAsync(force: fromUser);
         ApplyOnlineState();

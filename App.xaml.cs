@@ -63,7 +63,7 @@ public partial class App : Application
                 Dispatcher.Invoke(BringToFront);
         }) { IsBackground = true }.Start();
 
-        AppUpdater.CleanupOld();
+        if (!Native.IsPackaged) AppUpdater.CleanupOld();
         DispatcherUnhandledException += OnError;
         base.OnStartup(e);
         Settings.Load();

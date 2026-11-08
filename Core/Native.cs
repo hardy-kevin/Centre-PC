@@ -8,6 +8,25 @@ namespace CentrePC.Core;
 /// <summary>Appels Windows bas niveau : icônes haute résolution, thread STA, fenêtre sombre.</summary>
 public static class Native
 {
+    // ---------- Version Microsoft Store (paquet MSIX) ? ----------
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetCurrentPackageFullName(ref int length, System.Text.StringBuilder name);
+
+    private static bool? _packaged;
+    /// <summary>Vrai quand Centre PC tourne en version Microsoft Store : mises à jour et désinstallation passent par le Store.</summary>
+    public static bool IsPackaged
+    {
+        get
+        {
+            if (_packaged == null)
+            {
+                try { int len = 0; _packaged = GetCurrentPackageFullName(ref len, null) != 15700; }   // 15700 = pas de paquet
+                catch { _packaged = false; }
+            }
+            return _packaged.Value;
+        }
+    }
+
     // ---------- Exécution sur un thread STA (requis par les objets COM du shell) ----------
     public static Task<T> RunSta<T>(Func<T> func)
     {

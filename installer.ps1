@@ -25,8 +25,11 @@ Get-Process CentrePC -ErrorAction SilentlyContinue | Stop-Process -Force
 Get-Process CentrePC -ErrorAction SilentlyContinue | Wait-Process -Timeout 10 -ErrorAction SilentlyContinue
 $copie = $false
 for ($i = 0; $i -lt 15 -and -not $copie; $i++) {
-    try { Copy-Item publish\CentrePC.exe $dest -Force -ErrorAction Stop; $copie = $true }
-    catch { Start-Sleep -Milliseconds 700 }
+    # Centre PC peut mettre une seconde à se fermer : on réessaie sans afficher d'erreur
+    Copy-Item publish\CentrePC.exe $dest -Force -ErrorAction SilentlyContinue
+    if ((Get-Item $dest\CentrePC.exe -ErrorAction SilentlyContinue).Length -eq (Get-Item publish\CentrePC.exe).Length -and
+        (Get-Item $dest\CentrePC.exe).LastWriteTime -eq (Get-Item publish\CentrePC.exe).LastWriteTime) { $copie = $true }
+    else { Start-Sleep -Milliseconds 700 }
 }
 if (-not $copie) { Write-Host "Ferme Centre PC puis relance Compiler.bat." -ForegroundColor Red; Stop-Transcript | Out-Null; exit 1 }
 

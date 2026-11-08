@@ -12,9 +12,9 @@
     <Product>Centre PC</Product>
     <Authors>Kevin Hardy</Authors>
     <Company>Kevin Hardy</Company>
-    <Copyright>Â© 2026 Kevin Hardy</Copyright>
-    <Description>Applications, bureau et mises Ã  jour de Windows en un seul endroit.</Description>
-    <Version>1.2.0</Version>
+    <Copyright>Ã‚Â© 2026 Kevin Hardy</Copyright>
+    <Description>Applications, bureau et mises ÃƒÂ  jour de Windows en un seul endroit.</Description>
+    <Version>1.2.1</Version>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>true</SelfContained>
     <PublishSingleFile>true</PublishSingleFile>

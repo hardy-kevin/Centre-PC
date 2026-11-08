@@ -14,6 +14,10 @@
 
 Rien d'autre à installer : tout est dans un seul fichier (Windows 10 et 11, 64 bits).
 
+## Bientôt sur le Microsoft Store
+
+Une version signée par Microsoft sera disponible sur le Microsoft Store (sans écran d'avertissement à l'installation).
+
 ## Mises à jour de Centre PC
 
 Centre PC vérifie au démarrage si une nouvelle version est publiée ici et propose de l'installer.
