@@ -1,0 +1,37 @@
+# Construit CentrePC.exe et le publie dans les « Releases » à chaque nouvelle version (étiquette vX.Y.Z).
+# Centre PC lit ces Releases pour proposer ses mises à jour.
+name: Publier une version
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Compiler CentrePC.exe
+        shell: pwsh
+        run: |
+          $v = "${{ github.ref_name }}".TrimStart('v')
+          dotnet publish CentrePC.csproj -c Release -o publish -p:Version=$v --nologo
+          $h = (Get-FileHash publish/CentrePC.exe -Algorithm SHA256).Hash.ToLower()
+          Set-Content -Path publish/CentrePC.exe.sha256 -Value "$h  CentrePC.exe" -Encoding ascii -NoNewline
+
+      - name: Publier la version
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Centre PC ${{ github.ref_name }}
+          body_path: NOTES_VERSION.md
+          files: |
+            publish/CentrePC.exe
+            publish/CentrePC.exe.sha256
