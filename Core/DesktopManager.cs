@@ -48,13 +48,15 @@ public static class DesktopManager
     public static int Store(IEnumerable<AppItem> items)
     {
         var ops = new List<MoveOp>();
-        foreach (var it in items.Where(i => i.OnDesktop && i.FilePath != null))
+        // Raccourcis seulement : les documents se rangent dans Documents, Images… (DocumentLibrary), jamais dans un dossier caché
+        foreach (var it in items.Where(i => i.OnDesktop && i.FilePath != null && i.IsShortcut))
             ops.Add(new MoveOp(it.FilePath, UniquePath(DestinationDir(it), Path.GetFileName(it.FilePath))));
         var done = Execute(ops);
         foreach (var op in done)
         {
             Settings.Current.Stored[op.To] = op.From;    // emplacement rangé → emplacement d'origine
             IconStyler.OnMoved(op.From, op.To);
+            History.Record("rangement", op.From, op.To);
         }
         Settings.Save();
         return done.Count;
@@ -101,12 +103,13 @@ public static class DesktopManager
             Settings.Current.Stored.Remove(op.From);
             Settings.Current.Stored.Remove(Path.GetFileName(op.From));   // ancien format (nom de fichier seul)
             IconStyler.OnMoved(op.From, op.To);
+            History.Record("remise", op.From, op.To);
         }
         Settings.Save();
         return done.Count;
     }
 
-    private static string OriginalOf(string storedPath)
+    internal static string OriginalOf(string storedPath)
     {
         if (Settings.Current.Stored.TryGetValue(storedPath, out var o) && !string.IsNullOrEmpty(o)) return o;
         if (Settings.Current.Stored.TryGetValue(Path.GetFileName(storedPath), out o) && !string.IsNullOrEmpty(o)) return o;
@@ -147,7 +150,7 @@ public static class DesktopManager
     }
 
     // ------------------------------------------------------------------ déplacements
-    private static List<MoveOp> Execute(List<MoveOp> ops)
+    internal static List<MoveOp> Execute(List<MoveOp> ops)
     {
         var done = new List<MoveOp>();
         var needAdmin = new List<MoveOp>();
@@ -174,9 +177,18 @@ public static class DesktopManager
         try
         {
             var ops = JsonSerializer.Deserialize<List<MoveOp>>(File.ReadAllText(jsonPath));
-            foreach (var op in ops) { try { File.Move(op.From, op.To); } catch { } }
+            foreach (var op in ops)
+            {
+                // Fichier d'instructions modifiable sans droits : départ et arrivée doivent être des emplacements autorisés
+                if (!Elevated.IsAllowedLocation(op.From) || !Elevated.IsAllowedLocation(op.To) || File.Exists(op.To))
+                {
+                    Log.Info($"Déplacement administrateur refusé : {op.From} → {op.To}");
+                    continue;
+                }
+                try { File.Move(op.From, op.To); } catch (Exception ex) { Log.Error("Déplacement " + op.From, ex); }
+            }
         }
-        catch { }
+        catch (Exception ex) { Log.Error("Déplacements administrateur", ex); }
     }
 
     public static string UniquePath(string dir, string fileName)

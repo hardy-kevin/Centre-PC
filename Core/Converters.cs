@@ -31,6 +31,63 @@ public static class IconLoader
 
     public static void ClearCache() => Cache.Clear();
 
+    // ------------------------------------------------------------------ cache sur le disque
+    // Les icônes calculées sont gardées en PNG : au lancement suivant elles s'affichent sans relire les programmes.
+    // La clé tient compte de la date du raccourci : une icône changée (style, nouvelle version) est recalculée.
+    private static readonly string DiskDir = Path.Combine(Settings.DataDir, "Cache", "Icones");
+    private static bool _purged;
+
+    private static string DiskKey(AppItem it)
+    {
+        string stamp = "";
+        try { if (it.FilePath != null) stamp = File.GetLastWriteTimeUtc(it.FilePath).Ticks.ToString(); } catch { }
+        var bytes = System.Security.Cryptography.SHA1.HashData(System.Text.Encoding.UTF8.GetBytes($"{it.IconSource}|{stamp}|v1"));
+        return Path.Combine(DiskDir, Convert.ToHexString(bytes) + ".png");
+    }
+
+    private static System.Windows.Media.ImageSource FromDisk(string file)
+    {
+        try
+        {
+            if (!_purged) Purge();
+            if (!File.Exists(file)) return null;
+            var bi = new System.Windows.Media.Imaging.BitmapImage();
+            bi.BeginInit();
+            bi.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+            bi.UriSource = new Uri(file);
+            bi.EndInit();
+            bi.Freeze();
+            return bi;
+        }
+        catch { return null; }
+    }
+
+    private static void ToDisk(string file, System.Windows.Media.Imaging.BitmapSource bmp)
+    {
+        try
+        {
+            Directory.CreateDirectory(DiskDir);
+            var enc = new System.Windows.Media.Imaging.PngBitmapEncoder();
+            enc.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bmp));
+            using var fs = File.Create(file);
+            enc.Save(fs);
+        }
+        catch { }
+    }
+
+    /// <summary>Icônes inutilisées depuis 30 jours : supprimées (une fois par lancement).</summary>
+    private static void Purge()
+    {
+        _purged = true;
+        try
+        {
+            if (!Directory.Exists(DiskDir)) return;
+            foreach (var f in new DirectoryInfo(DiskDir).GetFiles("*.png").Where(f => f.LastAccessTime < DateTime.Now.AddDays(-30) && f.LastWriteTime < DateTime.Now.AddDays(-30)))
+                try { f.Delete(); } catch { }
+        }
+        catch { }
+    }
+
     public static void Enqueue(IEnumerable<AppItem> items)
     {
         foreach (var it in items)
@@ -106,7 +163,13 @@ public static class IconLoader
             if (key == null) continue;
             if (!Cache.TryGetValue(key, out var img))
             {
-                img = Best(it);
+                var diskKey = DiskKey(it);
+                img = FromDisk(diskKey);
+                if (img == null)
+                {
+                    img = Best(it);
+                    if (img is System.Windows.Media.Imaging.BitmapSource bmp) ToDisk(diskKey, bmp);
+                }
                 if (img != null) Cache[key] = img;
             }
             if (img != null)

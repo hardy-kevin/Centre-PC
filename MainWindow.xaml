@@ -17,8 +17,10 @@
 
         <!-- Tuile commune à toutes les pages -->
         <DataTemplate x:Key="TileTemplate">
-            <Button Style="{StaticResource TileButton}" Tag="{Binding}" ToolTip="{Binding Name}"
-                    Click="Tile_Click" MouseRightButtonUp="Tile_RightClick">
+            <Button Style="{StaticResource TileButton}" Tag="{Binding}" ToolTip="{Binding Label}"
+                    Click="Tile_Click" MouseRightButtonUp="Tile_RightClick" AllowDrop="True"
+                    PreviewMouseLeftButtonDown="Tile_MouseDown" PreviewMouseMove="Tile_MouseMove"
+                    DragEnter="Tile_DragEnter" DragOver="Tile_DragOver" DragLeave="Tile_DragLeave" Drop="Tile_Drop">
                 <Grid Margin="8,14,8,8">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="50"/>
@@ -31,11 +33,24 @@
                     </Border>
                     <Image Source="{Binding Icon}" Width="46" Height="46" RenderOptions.BitmapScalingMode="HighQuality"/>
                     <Border Width="20" Height="20" CornerRadius="10" Background="{StaticResource Accent}" HorizontalAlignment="Right"
-                            VerticalAlignment="Top" Margin="0,-6,10,0" ToolTip="Reste toujours sur le bureau"
+                            VerticalAlignment="Top" Margin="0,-6,10,0" ToolTip="Toujours conservé sur le bureau"
                             Visibility="{Binding Keep, Converter={StaticResource BoolToVis}}">
                         <TextBlock Text="&#xE718;" Style="{StaticResource Glyph}" FontSize="10" Foreground="White"/>
                     </Border>
-                    <TextBlock Grid.Row="1" Text="{Binding Name}" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" TextAlignment="Center"
+                    <!-- Suite d'applications : nombre d'applications regroupées -->
+                    <Border MinWidth="20" Height="20" CornerRadius="10" Background="{StaticResource Surface2}" BorderBrush="{StaticResource Line}" BorderThickness="1"
+                            HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,10,-2" Padding="5,0"
+                            ToolTip="Suite : cliquez pour choisir l'application" Visibility="{Binding IsSuite, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Text="{Binding SuiteCount}" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource Text}"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <!-- Application obsolète -->
+                    <Border Width="20" Height="20" CornerRadius="10" Background="#F59E0B" HorizontalAlignment="Left"
+                            VerticalAlignment="Top" Margin="10,-6,0,0" ToolTip="{Binding ObsoleteTip}"
+                            Visibility="{Binding IsObsolete, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Text="&#xE7BA;" Style="{StaticResource Glyph}" FontSize="10" Foreground="White"/>
+                    </Border>
+                    <TextBlock Grid.Row="1" Text="{Binding Label}" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" TextAlignment="Center"
                                FontSize="12.5" MaxHeight="34" Margin="0,7,0,0" Foreground="{StaticResource Text}"/>
                 </Grid>
             </Button>
@@ -70,7 +85,7 @@
                 </Grid.ColumnDefinitions>
 
                 <!-- ============================ Barre latérale ============================ -->
-                <Border Background="{StaticResource Sidebar}" BorderBrush="{StaticResource Line}" BorderThickness="0,0,1,0">
+                <Border x:Name="Sidebar" Background="{StaticResource Sidebar}" BorderBrush="{StaticResource Line}" BorderThickness="0,0,1,0">
                     <DockPanel Margin="16,0,16,18">
                         <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="6,22,0,34">
                             <Border Width="40" Height="40" CornerRadius="12" Background="{StaticResource AccentGradient}">
@@ -78,7 +93,7 @@
                             </Border>
                             <StackPanel Margin="12,0,0,0" VerticalAlignment="Center">
                                 <TextBlock Text="Centre PC" FontFamily="{StaticResource DisplayFont}" FontSize="18" FontWeight="SemiBold"/>
-                                <TextBlock Text="Ton PC, en un seul endroit" FontSize="11.5" Foreground="{StaticResource Text2}"/>
+                                <TextBlock Text="Votre PC, centralisé" FontSize="11.5" Foreground="{StaticResource Text2}"/>
                             </StackPanel>
                         </StackPanel>
 
@@ -107,6 +122,18 @@
                                     <TextBlock Text="Bureau" Margin="14,0,0,0" VerticalAlignment="Center"/>
                                 </StackPanel>
                             </RadioButton>
+                            <RadioButton x:Name="NavDocuments" Style="{StaticResource NavButton}" Checked="Nav_Checked" Tag="documents">
+                                <Grid Width="170">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="&#xE8B7;" Style="{StaticResource Glyph}" FontSize="17" Width="22"/>
+                                        <TextBlock Text="Documents" Margin="14,0,0,0" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                    <Border x:Name="DocsBadge" HorizontalAlignment="Right" Background="#F59E0B" CornerRadius="9"
+                                            Padding="7,1" Visibility="Collapsed" VerticalAlignment="Center" ToolTip="Fichiers à ranger">
+                                        <TextBlock x:Name="DocsBadgeText" Text="0" FontSize="11.5" FontWeight="SemiBold" Foreground="White"/>
+                                    </Border>
+                                </Grid>
+                            </RadioButton>
                             <RadioButton x:Name="NavUpdates" Style="{StaticResource NavButton}" Checked="Nav_Checked" Tag="updates">
                                 <Grid Width="170">
                                     <StackPanel Orientation="Horizontal">
@@ -119,14 +146,48 @@
                                     </Border>
                                 </Grid>
                             </RadioButton>
+                            <RadioButton x:Name="NavDevices" Style="{StaticResource NavButton}" Checked="Nav_Checked" Tag="devices">
+                                <Grid Width="170">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="&#xE772;" Style="{StaticResource Glyph}" FontSize="17" Width="22"/>
+                                        <TextBlock Text="Périphériques" Margin="14,0,0,0" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                    <Border x:Name="DevicesBadge" HorizontalAlignment="Right" Background="#F59E0B" CornerRadius="9"
+                                            Padding="7,1" Visibility="Collapsed" VerticalAlignment="Center" ToolTip="Points à vérifier sur vos périphériques">
+                                        <TextBlock x:Name="DevicesBadgeText" Text="0" FontSize="11.5" FontWeight="SemiBold" Foreground="White"/>
+                                    </Border>
+                                </Grid>
+                            </RadioButton>
                             <RadioButton x:Name="NavSettings" Style="{StaticResource NavButton}" Checked="Nav_Checked" Tag="settings">
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="&#xE713;" Style="{StaticResource Glyph}" FontSize="17" Width="22"/>
                                     <TextBlock Text="Réglages" Margin="14,0,0,0" VerticalAlignment="Center"/>
                                 </StackPanel>
                             </RadioButton>
+                            <!-- Outils rapides : actions immédiates (pas des pages) -->
+                            <Border Height="1" Background="{StaticResource Line}" Margin="12,10,12,10"/>
+                            <Button x:Name="NavScreenshot" Style="{StaticResource NavAction}" Click="Screenshot_Click"
+                                    ToolTip="Clic : capturer une zone de l'écran · clic droit : écran entier, retardateur, dossier des captures">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="&#xE722;" Style="{StaticResource Glyph}" FontSize="17" Width="22"/>
+                                    <TextBlock Text="Capture d'écran" Margin="14,0,0,0" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
                         </StackPanel>
                     </DockPanel>
+                </Border>
+
+                <!-- Fenêtre ouverte par-dessus : le menu est voilé, bloqué, et la raison est affichée -->
+                <Border x:Name="SidebarShield" Visibility="Collapsed" Background="#D90B0B10" Cursor="No" Panel.ZIndex="5"
+                        MouseLeftButtonDown="ModalBackdrop_Click">
+                    <StackPanel VerticalAlignment="Center" Margin="26,0">
+                        <Border Width="40" Height="40" CornerRadius="12" Background="#24242E" HorizontalAlignment="Left">
+                            <TextBlock Text="&#xE72E;" Style="{StaticResource Glyph}" FontSize="17" Foreground="{StaticResource Text2}"/>
+                        </Border>
+                        <TextBlock Text="Menu en pause" FontWeight="SemiBold" FontSize="14" Margin="0,12,0,0"/>
+                        <TextBlock x:Name="SidebarShieldText" Foreground="{StaticResource Text2}" TextWrapping="Wrap" FontSize="12.5" Margin="0,4,0,0"
+                                   Text="Terminez ou fermez la fenêtre ouverte pour revenir au menu (touche Échap)."/>
+                    </StackPanel>
                 </Border>
 
                 <!-- ============================ Contenu ============================ -->
@@ -137,7 +198,8 @@
                     </Grid.RowDefinitions>
 
                     <!-- Boutons de la fenêtre -->
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top" WindowChrome.IsHitTestVisibleInChrome="True">
+                    <!-- Toujours accessibles, même avec une fenêtre ouverte par-dessus (réduire, agrandir, fermer) -->
+                    <StackPanel x:Name="WindowButtons" Panel.ZIndex="30" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top" WindowChrome.IsHitTestVisibleInChrome="True">
                         <Button Style="{StaticResource IconButton}" Content="&#xE921;" Click="Min_Click" ToolTip="Réduire"/>
                         <Button x:Name="MaxButton" Style="{StaticResource IconButton}" Content="&#xE922;" Click="Max_Click" ToolTip="Agrandir"/>
                         <Button Style="{StaticResource CloseButton}" Content="&#xE8BB;" Click="Close_Click" ToolTip="Fermer"/>
@@ -157,18 +219,31 @@
                             </Grid.ColumnDefinitions>
                             <StackPanel>
                                 <TextBlock Text="Applications" Style="{StaticResource PageTitle}"/>
-                                <TextBlock x:Name="AppsSubtitle" Text="Chargement de tes applications…" Style="{StaticResource Subtle}" Margin="0,4,0,0"/>
+                                <TextBlock x:Name="AppsSubtitle" Text="Chargement des applications…" Style="{StaticResource Subtle}" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                                <!-- Astuce sur sa propre ligne (elle était coupée par les boutons de droite) -->
+                                <StackPanel x:Name="AppsTip" Orientation="Horizontal" Margin="0,4,0,0" Visibility="Collapsed">
+                                    <TextBlock Text="&#xE82F;" Style="{StaticResource Glyph}" FontSize="12" Foreground="#F5B83D" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Astuce : glissez une tuile sur une autre pour les regrouper" Style="{StaticResource Subtle}" FontSize="12.5"
+                                               Margin="6,0,0,0" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                                </StackPanel>
                             </StackPanel>
                             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                                 <Button x:Name="OnlineButton" Style="{StaticResource BaseButton}" Click="Online_Click" Margin="0,0,12,0" Height="46" Visibility="Collapsed"
-                                        ToolTip="Identifie les applis de « Autres » grâce à winget et Wikidata (seul le nom de l'appli est envoyé)">
+                                        ToolTip="Identifie les applications de la catégorie « Autres » grâce aux catalogues publics (winget, Steam, Google Play, Wikidata…). Seul le nom de l'application est transmis.">
                                     <StackPanel Orientation="Horizontal">
                                         <TextBlock Text="&#xE774;" Style="{StaticResource Glyph}" FontSize="14"/>
-                                        <TextBlock x:Name="OnlineButtonText" Text="Affiner le tri en ligne" Margin="10,0,0,0"/>
+                                        <TextBlock x:Name="OnlineButtonText" Text="Affiner le classement en ligne" Margin="10,0,0,0"/>
+                                    </StackPanel>
+                                </Button>
+                                <Button Style="{StaticResource BaseButton}" Click="OpenManager_Click" Margin="0,0,12,0" Height="46"
+                                        ToolTip="Désinstaller des applications et repérer celles qui sont obsolètes">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="&#xE912;" Style="{StaticResource Glyph}" FontSize="14"/>
+                                        <TextBlock Text="Gérer les applications" Margin="10,0,0,0"/>
                                     </StackPanel>
                                 </Button>
                                 <TextBox x:Name="SearchBox" Width="380" VerticalAlignment="Center" Style="{StaticResource SearchBox}"
-                                         Tag="Rechercher… (tape directement)" TextChanged="Search_TextChanged" PreviewKeyDown="Search_KeyDown"/>
+                                         Tag="Rechercher… (saisissez directement)" TextChanged="Search_TextChanged" PreviewKeyDown="Search_KeyDown"/>
                             </StackPanel>
                         </Grid>
                         <WrapPanel x:Name="ChipsHost" Grid.Row="1" Margin="0,0,12,4"/>
@@ -192,6 +267,27 @@
                                         <Button x:Name="SortBannerButton" Grid.Column="2" Style="{StaticResource AccentButton}" Content="Trier maintenant" Click="OpenSorter_Click"/>
                                     </Grid>
                                 </Border>
+                                <Border x:Name="ObsoleteBanner" Visibility="Collapsed" Background="{StaticResource Surface}" CornerRadius="14"
+                                        BorderBrush="#7A5A1F" BorderThickness="1" Padding="20,14" Margin="0,8,0,4">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Border Width="34" Height="34" CornerRadius="10" Background="#F59E0B">
+                                            <TextBlock Text="&#xE7BA;" Style="{StaticResource Glyph}" FontSize="15" Foreground="White"/>
+                                        </Border>
+                                        <StackPanel Grid.Column="1" Margin="16,0" VerticalAlignment="Center">
+                                            <TextBlock x:Name="ObsoleteBannerTitle" FontWeight="SemiBold" FontSize="14"/>
+                                            <TextBlock x:Name="ObsoleteBannerText" Style="{StaticResource Subtle}" Margin="0,2,0,0" TextWrapping="Wrap"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Button Style="{StaticResource BaseButton}" Content="Plus tard" Click="ObsoleteLater_Click" Margin="0,0,10,0"/>
+                                            <Button Style="{StaticResource AccentButton}" Content="Voir" Click="OpenObsolete_Click"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
                                 <StackPanel x:Name="FavSection" Visibility="Collapsed">
                                     <StackPanel Orientation="Horizontal" Margin="2,22,0,12">
                                         <Border Width="30" Height="30" CornerRadius="9" Background="#F5B83D">
@@ -204,7 +300,7 @@
                                 <ItemsControl x:Name="AppsList" ItemTemplate="{StaticResource GroupTemplate}"/>
                                 <StackPanel x:Name="AppsEmpty" Visibility="Collapsed" Margin="0,60,0,0" HorizontalAlignment="Center">
                                     <TextBlock Text="&#xE721;" Style="{StaticResource Glyph}" FontSize="40" Foreground="{StaticResource Text2}"/>
-                                    <TextBlock Text="Aucune appli ne correspond à ta recherche" Style="{StaticResource Subtle}" FontSize="15" Margin="0,14,0,0"/>
+                                    <TextBlock Text="Aucune application ne correspond à votre recherche" Style="{StaticResource Subtle}" FontSize="15" Margin="0,14,0,0"/>
                                 </StackPanel>
                             </StackPanel>
                         </ScrollViewer>
@@ -214,7 +310,7 @@
                     <ScrollViewer x:Name="PageDesktop" Grid.Row="1" Visibility="Collapsed" VerticalScrollBarVisibility="Auto" Padding="40,0,40,28">
                         <StackPanel>
                             <TextBlock Text="Bureau" Style="{StaticResource PageTitle}"/>
-                            <TextBlock x:Name="DeskHint" Text="Range ton bureau en un clic. Tu peux tout remettre comme avant à tout moment." Style="{StaticResource Subtle}" Margin="0,4,0,20"/>
+                            <TextBlock x:Name="DeskHint" Text="Rangez votre bureau en un clic. Vous pouvez rétablir l'état initial à tout moment." Style="{StaticResource Subtle}" Margin="0,4,0,20"/>
 
                             <Border Background="{StaticResource HeroGradient}" CornerRadius="18" Padding="30,26" BorderBrush="#3A2F7A" BorderThickness="1">
                                 <Grid>
@@ -253,23 +349,239 @@
                             </Border>
 
 
+                            <!-- Organisation du bureau : options regroupées ici, repliées par défaut -->
+                            <Border Style="{StaticResource Card}" Margin="0,16,0,0" Padding="22,14">
+                                <StackPanel>
+                                    <Grid>
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <TextBlock Text="&#xE713;" Style="{StaticResource Glyph}" FontSize="15"/>
+                                            <TextBlock Text="Organisation du bureau" FontWeight="SemiBold" Margin="12,0,0,0" VerticalAlignment="Center"/>
+                                            <TextBlock x:Name="DeskOptionsSummary" Style="{StaticResource Subtle}" Margin="14,0,0,0" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                        <Button x:Name="DeskOptionsToggle" Style="{StaticResource BaseButton}" Content="Personnaliser" Padding="14,7"
+                                                HorizontalAlignment="Right" Click="DeskOptionsToggle_Click"/>
+                                    </Grid>
+                                    <StackPanel x:Name="DeskOptionsPanel" Visibility="Collapsed" Margin="0,18,0,4">
+                                        <TextBlock Text="EMPLACEMENT DES ICÔNES RANGÉES" Foreground="{StaticResource Text2}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,10"/>
+                                        <WrapPanel>
+                                            <RadioButton x:Name="ModeAppRadio" Style="{StaticResource Chip}" GroupName="tidymode" Checked="TidyMode_Checked" Tag="app">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Text="&#xE71D;" Style="{StaticResource Glyph}" FontSize="12"/>
+                                                    <TextBlock Text="Dans Centre PC (bureau vide)" Margin="8,0,0,0"/>
+                                                </StackPanel>
+                                            </RadioButton>
+                                            <RadioButton x:Name="ModeFoldersRadio" Style="{StaticResource Chip}" GroupName="tidymode" Checked="TidyMode_Checked" Tag="folders">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Text="&#xE8B7;" Style="{StaticResource Glyph}" FontSize="12"/>
+                                                    <TextBlock Text="Dans des dossiers de catégorie sur le bureau" Margin="8,0,0,0"/>
+                                                </StackPanel>
+                                            </RadioButton>
+                                        </WrapPanel>
+                                        <CheckBox x:Name="TidyFilesCheck" Content="Proposer de ranger les fichiers du bureau dans Documents, Images…" Margin="0,12,0,0"
+                                                  Checked="TidyFiles_Changed" Unchecked="TidyFiles_Changed"/>
+                                        <CheckBox x:Name="ArrowsCheck" Content="Masquer les flèches de raccourci" Margin="0,8,0,0" Click="Arrows_Click"/>
+
+                                        <!-- Apparence : utile surtout avec les dossiers de catégorie sur le bureau -->
+                                        <StackPanel x:Name="StyleSection" Margin="0,22,0,0">
+                                            <TextBlock Text="APPARENCE DES ICÔNES" Foreground="{StaticResource Text2}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                                            <TextBlock x:Name="StyleIntro" Style="{StaticResource Subtle}" TextWrapping="Wrap"/>
+                                            <CheckBox x:Name="StyleFoldersCheck" Content="Colorer aussi les dossiers du bureau" Margin="0,10,0,0"
+                                                      Checked="StyleFolders_Changed" Unchecked="StyleFolders_Changed"/>
+                                            <WrapPanel Margin="0,14,0,0">
+                                                <Button x:Name="PreviewButton" Style="{StaticResource BaseButton}" Click="Preview_Click" Margin="0,0,10,0">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <TextBlock Text="&#xE890;" Style="{StaticResource Glyph}" FontSize="14"/>
+                                                        <TextBlock Text="Aperçu" Margin="10,0,0,0"/>
+                                                    </StackPanel>
+                                                </Button>
+                                                <Button x:Name="ApplyStyleButton" Style="{StaticResource AccentButton}" Click="ApplyStyle_Click" Margin="0,0,10,0">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <TextBlock Text="&#xE73E;" Style="{StaticResource Glyph}" FontSize="14"/>
+                                                        <TextBlock Text="Appliquer" Margin="10,0,0,0"/>
+                                                    </StackPanel>
+                                                </Button>
+                                                <Button x:Name="RevertStyleButton" Style="{StaticResource BaseButton}" Click="RevertStyle_Click">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <TextBlock Text="&#xE7A7;" Style="{StaticResource Glyph}" FontSize="14"/>
+                                                        <TextBlock Text="Icônes d'origine" Margin="10,0,0,0"/>
+                                                    </StackPanel>
+                                                </Button>
+                                            </WrapPanel>
+                                            <TextBlock x:Name="StyleStatus" Style="{StaticResource Subtle}" FontSize="12" Margin="0,10,0,0" TextWrapping="Wrap"/>
+                                            <Border x:Name="PreviewPanel" Visibility="Collapsed" Background="{StaticResource DesktopGradient}" CornerRadius="14"
+                                                    Padding="20,18,10,8" Margin="0,18,0,0" BorderBrush="{StaticResource Line}" BorderThickness="1">
+                                                <StackPanel>
+                                                    <TextBlock Text="APERÇU DU BUREAU" Foreground="{StaticResource Text2}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,14"/>
+                                                    <ItemsControl x:Name="PreviewList" ItemsPanel="{StaticResource WrapPanelTemplate}">
+                                                        <ItemsControl.ItemTemplate>
+                                                            <DataTemplate>
+                                                                <StackPanel Width="92" Margin="0,0,8,14">
+                                                                    <Image Source="{Binding Image}" Width="56" Height="56" RenderOptions.BitmapScalingMode="HighQuality"/>
+                                                                    <TextBlock Text="{Binding Name}" Foreground="White" FontSize="12" TextAlignment="Center" TextWrapping="Wrap"
+                                                                               TextTrimming="CharacterEllipsis" MaxHeight="32" Margin="0,6,0,0">
+                                                                        <TextBlock.Effect>
+                                                                            <DropShadowEffect BlurRadius="4" ShadowDepth="1" Opacity="0.8"/>
+                                                                        </TextBlock.Effect>
+                                                                    </TextBlock>
+                                                                </StackPanel>
+                                                            </DataTemplate>
+                                                        </ItemsControl.ItemTemplate>
+                                                    </ItemsControl>
+                                                </StackPanel>
+                                            </Border>
+                                        </StackPanel>
+
+                                        <Button x:Name="OpenStoreButton" Style="{StaticResource BaseButton}" Click="OpenStore_Click" Margin="0,20,0,0" HorizontalAlignment="Left" Padding="12,6"
+                                                ToolTip="Dossier où Centre PC conserve les raccourcis rangés">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="&#xE838;" Style="{StaticResource Glyph}" FontSize="13"/>
+                                                <TextBlock Text="Ouvrir le dossier des raccourcis rangés" Margin="8,0,0,0"/>
+                                            </StackPanel>
+                                        </Button>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+
                             <Border x:Name="LegacyBanner" Visibility="Collapsed"><TextBlock x:Name="LegacyText"/></Border>
                             <StackPanel Orientation="Horizontal" Margin="2,28,0,12">
                                 <Border Width="30" Height="30" CornerRadius="9" Background="{StaticResource AccentGradient}">
                                     <TextBlock Text="&#xE7F4;" Style="{StaticResource Glyph}" FontSize="14" Foreground="White"/>
                                 </Border>
                                 <TextBlock Text="Sur le bureau" Style="{StaticResource SectionTitle}" Margin="12,0,0,0" VerticalAlignment="Center"/>
-                                <TextBlock Text="clic droit sur une icône pour la garder ou la ranger" Style="{StaticResource Subtle}" Margin="14,0,0,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="Clic droit sur une icône pour la conserver ou la ranger" Style="{StaticResource Subtle}" Margin="14,0,0,0" VerticalAlignment="Center"/>
                             </StackPanel>
                             <Border Background="{StaticResource DesktopGradient}" CornerRadius="16" Padding="16,16,8,8" MinHeight="130" BorderBrush="{StaticResource Line}" BorderThickness="1">
                                 <Grid>
                                     <ItemsControl x:Name="DeskList" ItemTemplate="{StaticResource TileTemplate}" ItemsPanel="{StaticResource WrapPanelTemplate}"/>
-                                    <TextBlock x:Name="DeskEmpty" Text="Ton bureau est tout propre." Style="{StaticResource Subtle}" FontSize="14"
+                                    <TextBlock x:Name="DeskEmpty" Text="Votre bureau est rangé." Style="{StaticResource Subtle}" FontSize="14"
                                                HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed"/>
                                 </Grid>
                             </Border>
 
                             <ItemsControl x:Name="StoredList" ItemTemplate="{StaticResource GroupTemplate}" Margin="0,6,0,0"/>
+
+                            <!-- Historique : chaque déplacement peut être annulé pendant 30 jours -->
+                            <StackPanel x:Name="HistoryBox" Visibility="Collapsed" Margin="0,22,0,0">
+                                <Grid Margin="2,0,0,10">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="Historique" Style="{StaticResource SectionTitle}"/>
+                                        <TextBlock Text="30 derniers jours : « Annuler » rétablit l'élément à son emplacement précédent" Style="{StaticResource Subtle}" Margin="14,0,0,0" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                    <Button x:Name="HistoryMoreButton" Style="{StaticResource BaseButton}" Content="Tout afficher" Padding="12,6" HorizontalAlignment="Right" Click="HistoryMore_Click"/>
+                                </Grid>
+                                <Border Style="{StaticResource Card}" Padding="10,4">
+                                    <ItemsControl x:Name="HistoryList">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="6,8">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <StackPanel>
+                                                            <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"/>
+                                                            <StackPanel Orientation="Horizontal">
+                                                                <TextBlock Text="{Binding Label}" Style="{StaticResource Subtle}" FontSize="12"/>
+                                                                <TextBlock Text=" · " Style="{StaticResource Subtle}" FontSize="12"/>
+                                                                <TextBlock Text="{Binding When}" Style="{StaticResource Subtle}" FontSize="12"/>
+                                                            </StackPanel>
+                                                        </StackPanel>
+                                                        <Button Grid.Column="1" Style="{StaticResource BaseButton}" Content="Annuler" Padding="12,5" Tag="{Binding}"
+                                                                IsEnabled="{Binding CanUndo, Mode=OneTime}" Click="HistoryUndo_Click" VerticalAlignment="Center"/>
+                                                    </Grid>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </Border>
+                            </StackPanel>
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <!-- ======================= Page Documents ======================= -->
+                    <ScrollViewer x:Name="PageDocuments" Grid.Row="1" Visibility="Collapsed" VerticalScrollBarVisibility="Auto" Padding="40,0,40,28">
+                        <StackPanel>
+                            <TextBlock Text="Documents" Style="{StaticResource PageTitle}"/>
+                            <TextBlock Text="Vos fichiers sont classés dans les dossiers Windows (Documents, Images, Musique, Vidéos) et dans vos propres sous-dossiers. Ils y restent même sans Centre PC."
+                                       Style="{StaticResource Subtle}" TextWrapping="Wrap" Margin="0,4,0,20"/>
+
+                            <Border Background="{StaticResource HeroGradient}" CornerRadius="18" Padding="26,18" BorderBrush="#3A2F7A" BorderThickness="1">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                        <!-- Chiffre et libellé sur une ligne : « 12 éléments à ranger » -->
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock x:Name="DocPendingCount" Text="–" FontFamily="{StaticResource DisplayFont}" FontSize="34" FontWeight="SemiBold" VerticalAlignment="Bottom"/>
+                                            <TextBlock x:Name="DocPendingLabel" Text="éléments à ranger" FontSize="17" FontWeight="SemiBold" Margin="10,0,0,6" VerticalAlignment="Bottom"/>
+                                        </StackPanel>
+                                        <TextBlock x:Name="DocPendingDetail" Style="{StaticResource Subtle}" FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Width="270">
+                                        <Button x:Name="DocSortButton" Style="{StaticResource AccentButton}" Click="DocSort_Click" Padding="18,12">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="&#xE8B7;" Style="{StaticResource Glyph}" FontSize="15"/>
+                                                <TextBlock Text="Ranger mes fichiers" Margin="10,0,0,0"/>
+                                            </StackPanel>
+                                        </Button>
+                                        <Button Style="{StaticResource BaseButton}" Click="DocAddExisting_Click" Margin="0,10,0,0"
+                                                ToolTip="Ajouter à l'arborescence un dossier existant de votre PC">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="&#xE838;" Style="{StaticResource Glyph}" FontSize="14"/>
+                                                <TextBlock Text="Ajouter un dossier existant" Margin="10,0,0,0"/>
+                                            </StackPanel>
+                                        </Button>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+
+                            <!-- Vérification des rangements effectués (réversibles) -->
+                            <Border x:Name="DocReviewCard" Style="{StaticResource Card}" Margin="0,16,0,0" Visibility="Collapsed" BorderBrush="#3A2F7A" BorderThickness="1">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                        <TextBlock x:Name="DocReviewTitle" Style="{StaticResource SectionTitle}"/>
+                                        <TextBlock Style="{StaticResource Subtle}" TextWrapping="Wrap" Margin="0,6,0,0"
+                                                   Text="Validez ce qui vous convient. « Remettre à sa place » annule le déplacement : l'élément retrouve son emplacement d'origine et ne vous sera plus proposé."/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
+                                        <Button Style="{StaticResource BaseButton}" Content="Tout valider" Click="DocReviewAcceptAll_Click" Margin="0,0,10,0"/>
+                                        <Button Style="{StaticResource AccentButton}" Content="Vérifier" Click="DocReviewOpen_Click"/>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+
+                            <!-- Plan de rangement : arborescence proposée et rangement des éléments non rangés -->
+                            <Border x:Name="DocPlanCard" Style="{StaticResource Card}" Margin="0,16,0,0" Visibility="Collapsed">
+                                <StackPanel>
+                                    <TextBlock x:Name="DocPlanTitle" Text="Votre plan de rangement" Style="{StaticResource SectionTitle}"/>
+                                    <TextBlock x:Name="DocPlanText" Style="{StaticResource Subtle}" TextWrapping="Wrap" Margin="0,6,0,8"/>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
+                                        <TextBlock Text="&#xE72E;" Style="{StaticResource Glyph}" FontSize="13" Foreground="MediumSeaGreen" VerticalAlignment="Top" Margin="0,2,8,0"/>
+                                        <TextBlock Style="{StaticResource Subtle}" FontSize="12" TextWrapping="Wrap" MaxWidth="820"
+                                                   Text="Rangement réversible : rien n'est supprimé ni renommé. Chaque élément peut être remis à sa place, tout de suite ou plus tard. Vos dossiers existants sont conservés et réutilisés."/>
+                                    </StackPanel>
+                                    <WrapPanel>
+                                        <Button x:Name="DocPlanButton" Style="{StaticResource AccentButton}" Click="DocPlanOpen_Click" Margin="0,0,10,0" Content="Voir le plan"/>
+                                        <Button Style="{StaticResource BaseButton}" Click="DocPlanLater_Click" Content="Plus tard"/>
+                                    </WrapPanel>
+                                </StackPanel>
+                            </Border>
+
+                            <StackPanel x:Name="DocTreePanel" Margin="0,6,0,0"/>
+
+                            <StackPanel x:Name="DocRecentBox" Visibility="Collapsed" Margin="0,22,0,0">
+                                <TextBlock Text="Rangés récemment" Style="{StaticResource SectionTitle}" Margin="2,0,0,10"/>
+                                <Border Style="{StaticResource Card}" Padding="8">
+                                    <StackPanel x:Name="DocRecentPanel"/>
+                                </Border>
+                            </StackPanel>
                         </StackPanel>
                     </ScrollViewer>
 
@@ -298,14 +610,14 @@
                                     <TextBlock Text="&#xE7BA;" Style="{StaticResource Glyph}" FontSize="18" Foreground="#F5B83D"/>
                                     <StackPanel Margin="14,0,0,0">
                                         <TextBlock Text="Pas de connexion internet" FontWeight="SemiBold"/>
-                                        <TextBlock Text="La recherche et l'installation des mises à jour reprendront dès que la connexion revient. Le reste de Centre PC fonctionne normalement."
+                                        <TextBlock Text="La recherche et l'installation des mises à jour reprendront dès le retour de la connexion. Les autres fonctions de Centre PC restent disponibles."
                                                    Style="{StaticResource Subtle}" TextWrapping="Wrap" Margin="0,2,0,0"/>
                                     </StackPanel>
                                 </StackPanel>
                             </Border>
 
                             <!-- Résumé -->
-                            <UniformGrid Columns="4" Margin="-6,0">
+                            <UniformGrid Columns="3" Margin="-6,0">
                                 <Border Style="{StaticResource Card}" Margin="6">
                                     <StackPanel>
                                         <Border Width="34" Height="34" CornerRadius="10" Background="#3B82F6" HorizontalAlignment="Left">
@@ -328,6 +640,16 @@
                                 </Border>
                                 <Border Style="{StaticResource Card}" Margin="6">
                                     <StackPanel>
+                                        <Border Width="34" Height="34" CornerRadius="10" Background="#8B5CF6" HorizontalAlignment="Left">
+                                            <TextBlock Text="&#xE772;" Style="{StaticResource Glyph}" FontSize="15" Foreground="White"/>
+                                        </Border>
+                                        <TextBlock Text="Pilotes" Style="{StaticResource Subtle}" Margin="0,14,0,0"/>
+                                        <TextBlock x:Name="SumDrivers" Text="–" FontFamily="{StaticResource DisplayFont}" FontSize="28" FontWeight="SemiBold"/>
+                                        <TextBlock x:Name="SumDriversSub" Text="à vérifier" Style="{StaticResource Subtle}" FontSize="12" TextTrimming="CharacterEllipsis"/>
+                                    </StackPanel>
+                                </Border>
+                                <Border Style="{StaticResource Card}" Margin="6" Visibility="Collapsed">
+                                    <StackPanel>
                                         <Border Width="34" Height="34" CornerRadius="10" Background="#EF4444" HorizontalAlignment="Left">
                                             <TextBlock Text="&#xE7F4;" Style="{StaticResource Glyph}" FontSize="15" Foreground="White"/>
                                         </Border>
@@ -336,7 +658,7 @@
                                         <TextBlock x:Name="SumGpuSub" Text="" Style="{StaticResource Subtle}" FontSize="12" TextTrimming="CharacterEllipsis"/>
                                     </StackPanel>
                                 </Border>
-                                <Border Style="{StaticResource Card}" Margin="6">
+                                <Border Style="{StaticResource Card}" Margin="6" Visibility="Collapsed">
                                     <StackPanel>
                                         <Border Width="34" Height="34" CornerRadius="10" Background="#F59E0B" HorizontalAlignment="Left">
                                             <TextBlock Text="&#xE964;" Style="{StaticResource Glyph}" FontSize="15" Foreground="White"/>
@@ -347,6 +669,156 @@
                                     </StackPanel>
                                 </Border>
                             </UniformGrid>
+
+                            <!-- Installation -->
+                            <Border x:Name="InstallCard" Style="{StaticResource Card}" Margin="0,6,0,16" BorderBrush="#3A2F7A">
+                                <StackPanel>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel>
+                                            <TextBlock Text="Tout mettre à jour" Style="{StaticResource SectionTitle}"/>
+                                            <TextBlock Text="Applications, Windows, pilotes, Microsoft Store et antivirus en une seule opération. Options dans Réglages." Style="{StaticResource Subtle}" Margin="0,4,0,0"/>
+                                        </StackPanel>
+                                        <Button x:Name="InstallButton" Grid.Column="1" Style="{StaticResource AccentButton}" Click="Install_Click" Padding="22,13" VerticalAlignment="Top">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="&#xE896;" Style="{StaticResource Glyph}" FontSize="15"/>
+                                                <TextBlock Text="Tout mettre à jour" Margin="10,0,0,0"/>
+                                            </StackPanel>
+                                        </Button>
+                                    </Grid>
+
+                                    <StackPanel x:Name="InstallPanel" Visibility="Collapsed" Margin="0,18,0,0">
+                                        <!-- Où en est-on ? -->
+                                        <Grid Margin="0,0,0,8">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock x:Name="InstallHeadline" Text="Préparation…" FontSize="15" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock x:Name="InstallCounter" Grid.Column="1" Text="" Style="{StaticResource Subtle}" VerticalAlignment="Center" Margin="12,0,0,0"/>
+                                        </Grid>
+                                        <ProgressBar x:Name="InstallProgress" Height="6" Minimum="0" Maximum="1" Value="0" Foreground="{StaticResource Accent}"
+                                                     Background="{StaticResource Surface2}" BorderThickness="0" Margin="0,0,0,16"/>
+
+                                        <!-- Rapport (affiché à la fin) -->
+                                        <Border x:Name="ReportCard" Visibility="Collapsed" Background="{StaticResource Surface2}" CornerRadius="12" Padding="18,16" Margin="0,0,0,18">
+                                            <StackPanel>
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock x:Name="ReportGlyph" Text="&#xE73E;" Style="{StaticResource Glyph}" FontSize="18" Foreground="MediumSeaGreen" VerticalAlignment="Center"/>
+                                                    <TextBlock x:Name="ReportTitle" Text="Rapport" FontSize="16" FontWeight="SemiBold" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                                                </StackPanel>
+                                                <TextBlock x:Name="ReportSummary" Style="{StaticResource Subtle}" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                                                <WrapPanel x:Name="ReportCounts" Margin="0,12,0,0"/>
+                                                <StackPanel x:Name="ReportActionsBox" Visibility="Collapsed" Margin="0,16,0,0">
+                                                    <TextBlock Text="Actions requises" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                                    <ItemsControl x:Name="ReportActionsList">
+                                                        <ItemsControl.ItemTemplate>
+                                                            <DataTemplate>
+                                                                <Border BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0" Padding="0,10">
+                                                                    <Grid>
+                                                                        <Grid.ColumnDefinitions>
+                                                                            <ColumnDefinition Width="30"/>
+                                                                            <ColumnDefinition Width="*"/>
+                                                                            <ColumnDefinition Width="Auto"/>
+                                                                        </Grid.ColumnDefinitions>
+                                                                        <TextBlock Text="&#xE7BA;" Style="{StaticResource Glyph}" FontSize="15" Foreground="Goldenrod" VerticalAlignment="Top" Margin="0,2,0,0"/>
+                                                                        <StackPanel Grid.Column="1">
+                                                                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
+                                                                            <TextBlock Text="{Binding Message}" Style="{StaticResource Subtle}" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                                                                        </StackPanel>
+                                                                        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,0,0">
+                                                                            <Button Style="{StaticResource AccentButton}" Content="Lancer l'installateur" Padding="12,6" Tag="{Binding Installer}"
+                                                                                    Visibility="{Binding InstallerVisibility}" Click="ReportLaunch_Click" Margin="0,0,8,0"/>
+                                                                            <Button Style="{StaticResource BaseButton}" Content="Ne plus proposer" Padding="12,6" Tag="{Binding Id}" Visibility="{Binding ExcludeVisibility}"
+                                                                                    ToolTip="Exclure cette application des mises à jour (réversible dans Réglages)" Click="ReportExclude_Click"/>
+                                                                        </StackPanel>
+                                                                    </Grid>
+                                                                </Border>
+                                                            </DataTemplate>
+                                                        </ItemsControl.ItemTemplate>
+                                                    </ItemsControl>
+                                                </StackPanel>
+                                                <TextBlock x:Name="ReportDesktop" Visibility="Collapsed" Style="{StaticResource Subtle}" TextWrapping="Wrap" Margin="0,14,0,0"/>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <TextBlock Text="ÉTAPES" Foreground="{StaticResource Text2}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                        <ItemsControl x:Name="StepsList">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid Margin="0,5">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="30"/>
+                                                            <ColumnDefinition Width="200"/>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Text="{Binding Glyph}" Style="{StaticResource Glyph}" FontSize="15" Foreground="{Binding StatusBrush}" HorizontalAlignment="Left"/>
+                                                        <TextBlock Grid.Column="1" Text="{Binding Title}" VerticalAlignment="Center"/>
+                                                        <TextBlock Grid.Column="2" Text="{Binding Detail}" Style="{StaticResource Subtle}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                                        <TextBlock Grid.Column="3" Text="{Binding Status}" Foreground="{Binding StatusBrush}" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                        <StackPanel x:Name="AppsProgressBox" Visibility="Collapsed" Margin="0,14,0,0">
+                                            <TextBlock Text="APPLICATIONS" Foreground="{StaticResource Text2}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                            <ItemsControl x:Name="AppsProgressList">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Grid Margin="0,5">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="30"/>
+                                                                <ColumnDefinition Width="200"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="Auto"/>
+                                                            </Grid.ColumnDefinitions>
+                                                            <TextBlock Text="{Binding Glyph}" Style="{StaticResource Glyph}" FontSize="15" Foreground="{Binding StatusBrush}" HorizontalAlignment="Left"/>
+                                                            <TextBlock Grid.Column="1" Text="{Binding Title}" VerticalAlignment="Center"/>
+                                                            <TextBlock Grid.Column="2" Text="{Binding Detail}" ToolTip="{Binding Detail}" Style="{StaticResource Subtle}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,12,0"/>
+                                                            <TextBlock Grid.Column="3" Text="{Binding Status}" Foreground="{Binding StatusBrush}" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                                        </Grid>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+                                        <StackPanel x:Name="DriversProgressBox" Visibility="Collapsed" Margin="0,14,0,0">
+                                            <TextBlock Text="PILOTES" Foreground="{StaticResource Text2}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                            <ItemsControl x:Name="DriversProgressList">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Grid Margin="0,5">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="30"/>
+                                                                <ColumnDefinition Width="200"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="Auto"/>
+                                                            </Grid.ColumnDefinitions>
+                                                            <TextBlock Text="{Binding Glyph}" Style="{StaticResource Glyph}" FontSize="15" Foreground="{Binding StatusBrush}" HorizontalAlignment="Left"/>
+                                                            <TextBlock Grid.Column="1" Text="{Binding Title}" VerticalAlignment="Center"/>
+                                                            <TextBlock Grid.Column="2" Text="{Binding Detail}" ToolTip="{Binding Detail}" Style="{StaticResource Subtle}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,12,0"/>
+                                                            <TextBlock Grid.Column="3" Text="{Binding Status}" Foreground="{Binding StatusBrush}" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                                        </Grid>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+                                        <Border x:Name="RebootBanner" Visibility="Collapsed" Background="#2D2650" CornerRadius="10" Padding="16,12" Margin="0,14,0,0">
+                                            <Grid>
+                                                <TextBlock Text="Un redémarrage est nécessaire pour terminer l'installation." VerticalAlignment="Center"/>
+                                                <Button Style="{StaticResource AccentButton}" Content="Redémarrer maintenant" HorizontalAlignment="Right" Click="Reboot_Click"/>
+                                            </Grid>
+                                        </Border>
+                                        <Button x:Name="LogToggle" Style="{StaticResource BaseButton}" Content="Afficher les détails" HorizontalAlignment="Left" Margin="0,14,0,0" Padding="12,6" Click="LogToggle_Click"/>
+                                        <TextBox x:Name="LogBox" Visibility="Collapsed" IsReadOnly="True" Height="220" Margin="0,10,0,0" Padding="12" FontFamily="Cascadia Mono, Consolas"
+                                                 FontSize="12" Background="#0E0E13" Foreground="#B9B9C9" BorderBrush="{StaticResource Line}"
+                                                 VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" TextWrapping="NoWrap"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
 
                             <!-- Listes -->
                             <Grid Margin="0,10,0,0">
@@ -380,7 +852,7 @@
                                                 </DataTemplate>
                                             </ItemsControl.ItemTemplate>
                                         </ItemsControl>
-                                        <TextBlock x:Name="WingetEmpty" Text="Lance une recherche pour voir les applis à mettre à jour." Style="{StaticResource Subtle}" TextWrapping="Wrap"/>
+                                        <TextBlock x:Name="WingetEmpty" Text="Lancez une recherche pour afficher les applications à mettre à jour." Style="{StaticResource Subtle}" TextWrapping="Wrap"/>
                                     </StackPanel>
                                 </Border>
                                 <Border Grid.Column="2" Style="{StaticResource Card}">
@@ -404,10 +876,54 @@
                                                 </DataTemplate>
                                             </ItemsControl.ItemTemplate>
                                         </ItemsControl>
-                                        <TextBlock x:Name="WuEmpty" Text="Lance une recherche pour voir les mises à jour Windows et pilotes." Style="{StaticResource Subtle}" TextWrapping="Wrap"/>
+                                        <TextBlock x:Name="WuEmpty" Text="Lancez une recherche pour afficher les mises à jour Windows." Style="{StaticResource Subtle}" TextWrapping="Wrap"/>
                                     </StackPanel>
                                 </Border>
                             </Grid>
+
+                            <!-- Pilotes -->
+                            <Border Style="{StaticResource Card}" Margin="0,16,0,0">
+                                <StackPanel>
+                                    <Grid Margin="0,0,0,4">
+                                        <TextBlock Text="Pilotes" Style="{StaticResource SectionTitle}"/>
+                                        <CheckBox x:Name="AllDriversCheck" Content="Tout cocher" HorizontalAlignment="Right" IsChecked="True"
+                                                  Checked="AllDrivers_Changed" Unchecked="AllDrivers_Changed" Foreground="{StaticResource Text2}"/>
+                                    </Grid>
+                                    <TextBlock Text="Pilotes proposés par Windows Update pour vos périphériques. Un point de restauration est créé avant l'installation."
+                                               Style="{StaticResource Subtle}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,10"/>
+                                    <ItemsControl x:Name="DriverList">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0" Padding="0,10">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <CheckBox IsChecked="{Binding Selected}" IsEnabled="{Binding CanSelect}" VerticalAlignment="Center">
+                                                            <StackPanel>
+                                                                <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Title}"/>
+                                                                <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                                                                    <TextBlock Text="{Binding Subtitle}" Style="{StaticResource Subtle}" FontSize="12"/>
+                                                                    <TextBlock Text="{Binding Note}" Visibility="{Binding NoteVisibility}" Foreground="Goldenrod" FontSize="12" Margin="10,0,0,0"/>
+                                                                </StackPanel>
+                                                            </StackPanel>
+                                                        </CheckBox>
+                                                        <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center" HorizontalAlignment="Right">
+                                                            <TextBlock Text="{Binding VersionText}" Style="{StaticResource Subtle}" FontSize="12" HorizontalAlignment="Right"/>
+                                                            <TextBlock Text="{Binding Size}" Style="{StaticResource Subtle}" FontSize="11" HorizontalAlignment="Right" Opacity="0.7"/>
+                                                        </StackPanel>
+                                                        <Button Grid.Column="2" Style="{StaticResource IconButton}" Content="&#xE711;" Tag="{Binding}" Click="ExcludeDriver_Click"
+                                                                ToolTip="Ne plus proposer ce pilote (réversible dans Réglages)" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                                                    </Grid>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <TextBlock x:Name="DriversEmpty" Text="Lancez une recherche pour afficher les pilotes à mettre à jour." Style="{StaticResource Subtle}" TextWrapping="Wrap"/>
+                                </StackPanel>
+                            </Border>
 
                             <!-- Matériel -->
                             <Border Style="{StaticResource Card}" Margin="0,16,0,0">
@@ -436,189 +952,87 @@
                                             <StackPanel x:Name="PeriphInfo" Margin="0,8,0,0"/>
                                         </StackPanel>
                                     </Grid>
-                                    <TextBlock Text="Le BIOS ne se met jamais à jour automatiquement : une erreur peut rendre le PC inutilisable. Les firmwares des souris, claviers et casques se mettent à jour depuis leur logiciel."
+                                    <TextBlock Text="Le BIOS n'est jamais mis à jour automatiquement : une erreur pourrait rendre le PC inutilisable. Les firmwares des souris, claviers et casques se mettent à jour depuis le logiciel du fabricant."
                                                Style="{StaticResource Subtle}" FontSize="12" TextWrapping="Wrap" Margin="0,16,0,0"/>
                                 </StackPanel>
                             </Border>
 
-                            <!-- Installation -->
-                            <Border Style="{StaticResource Card}" Margin="0,16,0,0" BorderBrush="#3A2F7A">
-                                <StackPanel>
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                        </Grid.ColumnDefinitions>
-                                        <StackPanel>
-                                            <TextBlock Text="Tout mettre à jour" Style="{StaticResource SectionTitle}"/>
-                                            <TextBlock Text="Applications, Windows, pilotes, Store et antivirus en une fois. Options dans Réglages." Style="{StaticResource Subtle}" Margin="0,4,0,0"/>
-                                        </StackPanel>
-                                        <Button x:Name="InstallButton" Grid.Column="1" Style="{StaticResource AccentButton}" Click="Install_Click" Padding="22,13" VerticalAlignment="Top">
-                                            <StackPanel Orientation="Horizontal">
-                                                <TextBlock Text="&#xE896;" Style="{StaticResource Glyph}" FontSize="15"/>
-                                                <TextBlock Text="Tout mettre à jour" Margin="10,0,0,0"/>
-                                            </StackPanel>
-                                        </Button>
-                                    </Grid>
-
-                                    <StackPanel x:Name="InstallPanel" Visibility="Collapsed" Margin="0,18,0,0">
-                                        <ProgressBar x:Name="InstallProgress" Height="4" IsIndeterminate="True" Foreground="{StaticResource Accent}"
-                                                     Background="{StaticResource Surface2}" BorderThickness="0" Margin="0,0,0,14"/>
-                                        <ItemsControl x:Name="StepsList">
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate>
-                                                    <Grid Margin="0,5">
-                                                        <Grid.ColumnDefinitions>
-                                                            <ColumnDefinition Width="30"/>
-                                                            <ColumnDefinition Width="200"/>
-                                                            <ColumnDefinition Width="*"/>
-                                                            <ColumnDefinition Width="Auto"/>
-                                                        </Grid.ColumnDefinitions>
-                                                        <TextBlock Text="{Binding Glyph}" Style="{StaticResource Glyph}" FontSize="15" Foreground="{Binding StatusBrush}" HorizontalAlignment="Left"/>
-                                                        <TextBlock Grid.Column="1" Text="{Binding Title}" VerticalAlignment="Center"/>
-                                                        <TextBlock Grid.Column="2" Text="{Binding Detail}" Style="{StaticResource Subtle}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                                                        <TextBlock Grid.Column="3" Text="{Binding Status}" Foreground="{Binding StatusBrush}" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                                                    </Grid>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
-                                        <Border x:Name="RebootBanner" Visibility="Collapsed" Background="#2D2650" CornerRadius="10" Padding="16,12" Margin="0,14,0,0">
-                                            <Grid>
-                                                <TextBlock Text="Un redémarrage est nécessaire pour terminer l'installation." VerticalAlignment="Center"/>
-                                                <Button Style="{StaticResource AccentButton}" Content="Redémarrer maintenant" HorizontalAlignment="Right" Click="Reboot_Click"/>
-                                            </Grid>
-                                        </Border>
-                                        <Button x:Name="LogToggle" Style="{StaticResource BaseButton}" Content="Afficher les détails" HorizontalAlignment="Left" Margin="0,14,0,0" Padding="12,6" Click="LogToggle_Click"/>
-                                        <TextBox x:Name="LogBox" Visibility="Collapsed" IsReadOnly="True" Height="220" Margin="0,10,0,0" Padding="12" FontFamily="Cascadia Mono, Consolas"
-                                                 FontSize="12" Background="#0E0E13" Foreground="#B9B9C9" BorderBrush="{StaticResource Line}"
-                                                 VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" TextWrapping="NoWrap"/>
-                                    </StackPanel>
-                                </StackPanel>
-                            </Border>
                         </StackPanel>
                     </ScrollViewer>
 
                     <!-- ======================= Page Réglages ======================= -->
+                    <!-- ======================= Page Périphériques ======================= -->
+                    <ScrollViewer x:Name="PageDevices" Grid.Row="1" Visibility="Collapsed" VerticalScrollBarVisibility="Auto" Padding="40,0,40,28">
+                        <StackPanel>
+                            <Grid Margin="0,0,0,18">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="Périphériques" Style="{StaticResource PageTitle}"/>
+                                    <TextBlock Style="{StaticResource Subtle}" Margin="0,4,0,0" TextWrapping="Wrap"
+                                               Text="L'état de vos périphériques et un premier diagnostic. Pour aller plus loin : les paramètres de Windows ou le logiciel du fabricant."/>
+                                </StackPanel>
+                                <Button x:Name="DevicesScanButton" Grid.Column="1" Style="{StaticResource BaseButton}" Click="DevicesScan_Click" Padding="16,10" VerticalAlignment="Center" Margin="16,0,0,0">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="&#xE72C;" Style="{StaticResource Glyph}" FontSize="13"/>
+                                        <TextBlock Text="Analyser à nouveau" Margin="8,0,0,0"/>
+                                    </StackPanel>
+                                </Button>
+                            </Grid>
+                            <Border Background="{StaticResource HeroGradient}" CornerRadius="18" Padding="24,18" BorderBrush="#3A2F7A" BorderThickness="1" Margin="0,0,0,16">
+                                <StackPanel Orientation="Horizontal">
+                                    <Border x:Name="DevicesSummaryIcon" Width="44" Height="44" CornerRadius="13" Background="#10B981">
+                                        <TextBlock x:Name="DevicesSummaryGlyph" Text="&#xE72C;" Style="{StaticResource Glyph}" FontSize="20" Foreground="White"/>
+                                    </Border>
+                                    <StackPanel Margin="16,0,0,0" VerticalAlignment="Center">
+                                        <TextBlock x:Name="DevicesSummaryTitle" Text="Analyse des périphériques…" FontSize="18" FontWeight="SemiBold"/>
+                                        <TextBlock x:Name="DevicesSummaryText" Style="{StaticResource Subtle}" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                            <!-- Outils de test : on vérifie soi-même, en direct -->
+                            <TextBlock Text="OUTILS DE TEST" Foreground="{StaticResource Text2}" FontSize="11" FontWeight="SemiBold" Margin="2,0,0,10"/>
+                            <WrapPanel x:Name="DeviceTestTiles" Margin="0,0,0,14"/>
+                            <TextBlock Text="ÉTAT DES PÉRIPHÉRIQUES" Foreground="{StaticResource Text2}" FontSize="11" FontWeight="SemiBold" Margin="2,0,0,10"/>
+                            <StackPanel x:Name="DevicesPanel"/>
+                        </StackPanel>
+                    </ScrollViewer>
+
                     <ScrollViewer x:Name="PageSettings" Grid.Row="1" Visibility="Collapsed" VerticalScrollBarVisibility="Auto" Padding="40,0,40,28">
                         <StackPanel MaxWidth="1100" HorizontalAlignment="Left">
                             <TextBlock Text="Réglages" Style="{StaticResource PageTitle}"/>
-                            <TextBlock Text="Tous les réglages au même endroit. Les pages principales restent simples." Style="{StaticResource Subtle}" Margin="0,4,0,20"/>
+                            <TextBlock Text="L'ensemble des paramètres de Centre PC." Style="{StaticResource Subtle}" Margin="0,4,0,20"/>
 
-                            <Border Style="{StaticResource Card}">
-                                <StackPanel>
-                                    <TextBlock Text="Bureau" Style="{StaticResource SectionTitle}"/>
-                                        <TextBlock Text="OÙ RANGER LES ICÔNES ?" Foreground="{StaticResource Text2}" FontSize="11" FontWeight="SemiBold" Margin="0,16,0,10"/>
-                                        <WrapPanel>
-                                            <RadioButton x:Name="ModeAppRadio" Style="{StaticResource Chip}" GroupName="tidymode" Checked="TidyMode_Checked" Tag="app">
-                                                <StackPanel Orientation="Horizontal">
-                                                    <TextBlock Text="&#xE71D;" Style="{StaticResource Glyph}" FontSize="12"/>
-                                                    <TextBlock Text="Dans Centre PC (bureau vide)" Margin="8,0,0,0"/>
-                                                </StackPanel>
-                                            </RadioButton>
-                                            <RadioButton x:Name="ModeFoldersRadio" Style="{StaticResource Chip}" GroupName="tidymode" Checked="TidyMode_Checked" Tag="folders">
-                                                <StackPanel Orientation="Horizontal">
-                                                    <TextBlock Text="&#xE8B7;" Style="{StaticResource Glyph}" FontSize="12"/>
-                                                    <TextBlock Text="Dans des dossiers de thème sur le bureau" Margin="8,0,0,0"/>
-                                                </StackPanel>
-                                            </RadioButton>
-                                        </WrapPanel>
-                                        <CheckBox x:Name="TidyFilesCheck" Content="Ranger aussi les fichiers (documents, images…)" Margin="0,10,0,0"
-                                                  Checked="TidyFiles_Changed" Unchecked="TidyFiles_Changed"/>
-                                        <Button Style="{StaticResource BaseButton}" Click="OpenStore_Click" Margin="0,14,0,0" HorizontalAlignment="Left">
-                                            <StackPanel Orientation="Horizontal">
-                                                <TextBlock Text="&#xE838;" Style="{StaticResource Glyph}" FontSize="14"/>
-                                                <TextBlock Text="Ouvrir le dossier de rangement" Margin="10,0,0,0"/>
-                                            </StackPanel>
-                                        </Button>
-                                </StackPanel>
-                            </Border>
-                            <!-- Apparence des icônes -->
-                            <Border Style="{StaticResource Card}" Margin="0,16,0,0">
-                                <StackPanel>
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                        </Grid.ColumnDefinitions>
-                                        <StackPanel Margin="0,0,24,0">
-                                            <StackPanel Orientation="Horizontal">
-                                                <Border Width="30" Height="30" CornerRadius="9" Background="#EC4899">
-                                                    <TextBlock Text="&#xE790;" Style="{StaticResource Glyph}" FontSize="14" Foreground="White"/>
-                                                </Border>
-                                                <TextBlock Text="Apparence des icônes" Style="{StaticResource SectionTitle}" Margin="12,0,0,0" VerticalAlignment="Center"/>
-                                            </StackPanel>
-                                            <TextBlock Style="{StaticResource Subtle}" TextWrapping="Wrap" Margin="0,10,0,0"
-                                                       Text="Chaque icône du bureau posée sur une tuile arrondie aux couleurs de son thème. Les icônes d'origine sont sauvegardées : tu peux revenir en arrière à tout moment."/>
-                                            <WrapPanel Margin="0,16,0,0">
-                                                <CheckBox x:Name="StyleFoldersCheck" Content="Appliquer aussi aux dossiers" Margin="0,0,24,8"
-                                                          Checked="StyleFolders_Changed" Unchecked="StyleFolders_Changed"/>
-                                                <CheckBox x:Name="ArrowsCheck" Content="Masquer les flèches de raccourci" Margin="0,0,24,8" Click="Arrows_Click"/>
-                                            </WrapPanel>
-                                            <TextBlock x:Name="StyleStatus" Style="{StaticResource Subtle}" FontSize="12" Margin="0,4,0,0" TextWrapping="Wrap"/>
-                                        </StackPanel>
-                                        <StackPanel Grid.Column="1" Width="270" VerticalAlignment="Top">
-                                            <Button x:Name="PreviewButton" Style="{StaticResource BaseButton}" Click="Preview_Click">
-                                                <StackPanel Orientation="Horizontal">
-                                                    <TextBlock Text="&#xE890;" Style="{StaticResource Glyph}" FontSize="14"/>
-                                                    <TextBlock Text="Aperçu" Margin="10,0,0,0"/>
-                                                </StackPanel>
-                                            </Button>
-                                            <Button x:Name="ApplyStyleButton" Style="{StaticResource AccentButton}" Click="ApplyStyle_Click" Margin="0,10,0,0" Padding="18,12">
-                                                <StackPanel Orientation="Horizontal">
-                                                    <TextBlock Text="&#xE73E;" Style="{StaticResource Glyph}" FontSize="14"/>
-                                                    <TextBlock Text="Appliquer au bureau" Margin="10,0,0,0"/>
-                                                </StackPanel>
-                                            </Button>
-                                            <Button x:Name="RevertStyleButton" Style="{StaticResource BaseButton}" Click="RevertStyle_Click" Margin="0,10,0,0">
-                                                <StackPanel Orientation="Horizontal">
-                                                    <TextBlock Text="&#xE7A7;" Style="{StaticResource Glyph}" FontSize="14"/>
-                                                    <TextBlock Text="Revenir aux icônes d'origine" Margin="10,0,0,0"/>
-                                                </StackPanel>
-                                            </Button>
-                                        </StackPanel>
-                                    </Grid>
-                                    <Border x:Name="PreviewPanel" Visibility="Collapsed" Background="{StaticResource DesktopGradient}" CornerRadius="14"
-                                            Padding="20,18,10,8" Margin="0,18,0,0" BorderBrush="{StaticResource Line}" BorderThickness="1">
-                                        <StackPanel>
-                                            <TextBlock Text="APERÇU DE TON BUREAU" Foreground="{StaticResource Text2}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,14"/>
-                                            <ItemsControl x:Name="PreviewList" ItemsPanel="{StaticResource WrapPanelTemplate}">
-                                                <ItemsControl.ItemTemplate>
-                                                    <DataTemplate>
-                                                        <StackPanel Width="92" Margin="0,0,8,14">
-                                                            <Image Source="{Binding Image}" Width="56" Height="56" RenderOptions.BitmapScalingMode="HighQuality"/>
-                                                            <TextBlock Text="{Binding Name}" Foreground="White" FontSize="12" TextAlignment="Center" TextWrapping="Wrap"
-                                                                       TextTrimming="CharacterEllipsis" MaxHeight="32" Margin="0,6,0,0">
-                                                                <TextBlock.Effect>
-                                                                    <DropShadowEffect BlurRadius="4" ShadowDepth="1" Opacity="0.8"/>
-                                                                </TextBlock.Effect>
-                                                            </TextBlock>
-                                                        </StackPanel>
-                                                    </DataTemplate>
-                                                </ItemsControl.ItemTemplate>
-                                            </ItemsControl>
-                                        </StackPanel>
-                                    </Border>
-                                </StackPanel>
-                            </Border>
 
-                            <Border Style="{StaticResource Card}" Margin="0,16,0,0">
+                            <TextBlock Text="CLASSEMENT DES APPLICATIONS" Foreground="{StaticResource Text2}" FontSize="11" FontWeight="SemiBold" Margin="2,8,0,0"/>
+                            <Border Style="{StaticResource Card}" Margin="0,10,0,0">
                                 <StackPanel>
                                     <TextBlock Text="Tri automatique" Style="{StaticResource SectionTitle}"/>
                                     <CheckBox x:Name="AutoOnlineCheck" Margin="0,14,0,0" Checked="AutoOnline_Changed" Unchecked="AutoOnline_Changed">
-                                        <TextBlock TextWrapping="Wrap" Text="Identifier automatiquement en ligne les applis inconnues (seul le nom de l'appli est envoyé à winget et Wikidata)"/>
+                                        <TextBlock TextWrapping="Wrap" Text="Identifier automatiquement en ligne les applications inconnues (seul le nom de l'application est transmis aux catalogues publics : winget, Steam, Google Play, Wikidata…)"/>
                                     </CheckBox>
                                     <TextBlock x:Name="OnlineSummary" Style="{StaticResource Subtle}" Margin="30,6,0,0" TextWrapping="Wrap"/>
                                     <WrapPanel Margin="0,16,0,0">
-                                        <Button Style="{StaticResource AccentButton}" Click="OpenSorterAll_Click" Margin="0,0,10,0">
+                                        <Button x:Name="SortUnsortedButton" Style="{StaticResource AccentButton}" Click="OpenSorterAll_Click" Margin="0,0,10,10">
                                             <StackPanel Orientation="Horizontal">
                                                 <TextBlock Text="&#xE8CB;" Style="{StaticResource Glyph}" FontSize="14"/>
-                                                <TextBlock Text="Trier les applis non classées" Margin="10,0,0,0"/>
+                                                <TextBlock x:Name="SortUnsortedText" Text="Trier les applications non classées" Margin="10,0,0,0"/>
                                             </StackPanel>
                                         </Button>
-                                        <Button Style="{StaticResource BaseButton}" Click="RetryOnline_Click">
+                                        <Button x:Name="RetryOnlineButton" Style="{StaticResource BaseButton}" Click="RetryOnline_Click" Margin="0,0,10,10"
+                                                ToolTip="Interroge à nouveau les catalogues publics pour les applications de la catégorie « Autres »">
                                             <StackPanel Orientation="Horizontal">
                                                 <TextBlock Text="&#xE72C;" Style="{StaticResource Glyph}" FontSize="14"/>
                                                 <TextBlock Text="Relancer la recherche en ligne" Margin="10,0,0,0"/>
+                                            </StackPanel>
+                                        </Button>
+                                        <Button Style="{StaticResource BaseButton}" Click="ReviewSort_Click" Margin="0,0,10,10"
+                                                ToolTip="Passer en revue la catégorie de chaque application classée automatiquement et le corriger">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="&#xE73E;" Style="{StaticResource Glyph}" FontSize="14"/>
+                                                <TextBlock Text="Vérifier le tri automatique" Margin="10,0,0,0"/>
                                             </StackPanel>
                                         </Button>
                                     </WrapPanel>
@@ -629,13 +1043,13 @@
                                 <StackPanel>
                                     <Grid>
                                         <StackPanel>
-                                            <TextBlock Text="Thèmes" Style="{StaticResource SectionTitle}"/>
-                                            <TextBlock Text="Ajoute, renomme ou ajuste les thèmes et leurs mots-clés. Les applis sont retriées aussitôt." Style="{StaticResource Subtle}" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                                            <TextBlock Text="Catégories" Style="{StaticResource SectionTitle}"/>
+                                            <TextBlock Text="Ajoutez, renommez ou modifiez les catégories et leurs mots-clés. Les applications sont reclassées immédiatement." Style="{StaticResource Subtle}" Margin="0,4,0,0" TextWrapping="Wrap"/>
                                         </StackPanel>
                                         <Button Style="{StaticResource AccentButton}" HorizontalAlignment="Right" VerticalAlignment="Top" Click="AddTheme_Click">
                                             <StackPanel Orientation="Horizontal">
                                                 <TextBlock Text="&#xE710;" Style="{StaticResource Glyph}" FontSize="13"/>
-                                                <TextBlock Text="Ajouter un thème" Margin="8,0,0,0"/>
+                                                <TextBlock Text="Ajouter une catégorie" Margin="8,0,0,0"/>
                                             </StackPanel>
                                         </Button>
                                     </Grid>
@@ -681,12 +1095,12 @@
                                         <Button Style="{StaticResource BaseButton}" Click="ResetThemes_Click">
                                             <StackPanel Orientation="Horizontal">
                                                 <TextBlock Text="&#xE777;" Style="{StaticResource Glyph}" FontSize="13"/>
-                                                <TextBlock Text="Thèmes par défaut" Margin="8,0,0,0"/>
+                                                <TextBlock Text="Catégories par défaut" Margin="8,0,0,0"/>
                                             </StackPanel>
                                         </Button>
                                     </WrapPanel>
                                     <TextBlock Style="{StaticResource Subtle}" FontSize="12" Margin="0,10,0,0" TextWrapping="Wrap"
-                                               Text="Astuce déploiement : pose le fichier exporté, renommé « CentrePC.config.json », à côté de CentrePC.exe. Il sera appliqué au premier lancement sur chaque poste."/>
+                                               Text="Déploiement : placez le fichier exporté, renommé « CentrePC.config.json », à côté de CentrePC.exe. Il sera appliqué au premier lancement sur chaque poste."/>
                                 </StackPanel>
                             </Border>
 
@@ -725,25 +1139,80 @@
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
-                                    <TextBlock x:Name="ChoicesEmpty" Text="Aucun choix manuel pour l'instant : tout est trié automatiquement." Style="{StaticResource Subtle}" Margin="0,8,0,0"/>
+                                    <TextBlock x:Name="ChoicesEmpty" Text="Aucun choix manuel : le classement est entièrement automatique." Style="{StaticResource Subtle}" Margin="0,8,0,0"/>
                                 </StackPanel>
                             </Border>
 
-                            <Border Style="{StaticResource Card}" Margin="0,16,0,0">
+                            <TextBlock Text="MISES À JOUR" Foreground="{StaticResource Text2}" FontSize="11" FontWeight="SemiBold" Margin="2,26,0,0"/>
+                            <Border Style="{StaticResource Card}" Margin="0,10,0,0">
                                 <StackPanel>
-                                    <TextBlock Text="Mises à jour : ce qui est inclus" Style="{StaticResource SectionTitle}"/>
+                                    <TextBlock Text="Contenu de « Tout mettre à jour »" Style="{StaticResource SectionTitle}"/>
                                             <WrapPanel Margin="0,14,0,0">
                                                 <CheckBox x:Name="OptApps" Content="Applications cochées" IsChecked="True" Margin="0,0,22,8"/>
-                                                <CheckBox x:Name="OptWu" Content="Windows Update (système et pilotes)" IsChecked="True" Margin="0,0,22,8"/>
+                                                <CheckBox x:Name="OptWu" Content="Windows Update (système)" IsChecked="True" Margin="0,0,22,8"/>
+                                                <CheckBox x:Name="OptDrivers" Content="Pilotes cochés" IsChecked="True" Margin="0,0,22,8"/>
                                                 <CheckBox x:Name="OptStore" Content="Microsoft Store" IsChecked="True" Margin="0,0,22,8"/>
                                                 <CheckBox x:Name="OptDefender" Content="Antivirus Defender" IsChecked="True" Margin="0,0,22,8"/>
-                                                <CheckBox x:Name="OptRestore" Content="Point de restauration avant" IsChecked="True" Margin="0,0,22,8"/>
+                                                <CheckBox x:Name="OptRestore" Content="Point de restauration préalable" IsChecked="True" Margin="0,0,22,8"/>
                                             </WrapPanel>
+                                    <Grid Margin="0,8,0,0">
+                                        <CheckBox x:Name="DailyCheckBox" VerticalAlignment="Center" Checked="DailyCheck_Changed" Unchecked="DailyCheck_Changed">
+                                            <TextBlock TextWrapping="Wrap" Text="Vérifier chaque jour, même lorsque Centre PC est fermé, et m'avertir par une notification (aucune installation sans votre accord)"/>
+                                        </CheckBox>
+                                        <Button x:Name="TestNotifButton" Style="{StaticResource BaseButton}" Content="Tester la notification" Padding="12,6"
+                                                HorizontalAlignment="Right" Click="TestNotif_Click"/>
+                                    </Grid>
+                                    <TextBlock Text="Mises à jour exclues" FontWeight="SemiBold" Margin="0,12,0,4"/>
+                                    <ItemsControl x:Name="ExclusionsList">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0" Padding="0,8">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <StackPanel>
+                                                            <TextBlock Text="{Binding Name}"/>
+                                                            <TextBlock Text="{Binding Label}" Style="{StaticResource Subtle}" FontSize="12"/>
+                                                        </StackPanel>
+                                                        <Button Grid.Column="1" Style="{StaticResource BaseButton}" Content="Proposer à nouveau" Padding="12,6"
+                                                                Tag="{Binding}" Click="RestoreExclusion_Click"/>
+                                                    </Grid>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <TextBlock x:Name="ExclusionsEmpty" Text="Aucune : toutes les mises à jour sont proposées." Style="{StaticResource Subtle}"/>
                                 </StackPanel>
                             </Border>
-                            <Border Style="{StaticResource Card}" Margin="0,16,0,0">
+                            <TextBlock Text="ACCÈS RAPIDE" Foreground="{StaticResource Text2}" FontSize="11" FontWeight="SemiBold" Margin="2,26,0,0"/>
+                            <Border Style="{StaticResource Card}" Margin="0,10,0,0">
                                 <StackPanel>
-                                    <TextBlock Text="Centre PC" Style="{StaticResource SectionTitle}"/>
+                                    <Grid>
+                                        <StackPanel Margin="0,0,170,0">
+                                            <TextBlock Text="Lanceur d'applications" Style="{StaticResource SectionTitle}"/>
+                                            <TextBlock Style="{StaticResource Subtle}" TextWrapping="Wrap" Margin="0,4,0,0"
+                                                       Text="Un petit panneau s'ouvre depuis l'icône près de l'horloge ou un raccourci clavier : tapez un nom, l'application s'ouvre et le panneau disparaît. Fermer la fenêtre de Centre PC le garde disponible ; clic droit sur l'icône › Quitter pour l'arrêter."/>
+                                        </StackPanel>
+                                        <Button Style="{StaticResource BaseButton}" Content="Essayer" Click="QuickTry_Click" Padding="14,6"
+                                                HorizontalAlignment="Right" VerticalAlignment="Top" IsEnabled="{Binding IsChecked, ElementName=QuickAccessCheck}"/>
+                                    </Grid>
+                                    <CheckBox x:Name="QuickAccessCheck" Margin="0,14,0,0" Checked="QuickAccess_Changed" Unchecked="QuickAccess_Changed"
+                                              Content="Activer l'accès rapide (icône près de l'horloge et raccourci clavier)"/>
+                                    <StackPanel x:Name="QuickOptions" Margin="30,12,0,0">
+                                        <TextBlock Text="Raccourci clavier" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                                        <StackPanel x:Name="QuickHotkeys"/>
+                                        <CheckBox x:Name="StartWithWindowsCheck" Margin="0,6,0,0" Checked="StartWithWindows_Changed" Unchecked="StartWithWindows_Changed">
+                                            <TextBlock TextWrapping="Wrap" Text="Disponible dès l'ouverture de session (aucune fenêtre ne s'ouvre, seulement l'icône près de l'horloge)"/>
+                                        </CheckBox>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                            <TextBlock Text="CENTRE PC" Foreground="{StaticResource Text2}" FontSize="11" FontWeight="SemiBold" Margin="2,26,0,0"/>
+                            <Border Style="{StaticResource Card}" Margin="0,10,0,0">
+                                <StackPanel>
+                                    <TextBlock Text="Version et assistance" Style="{StaticResource SectionTitle}"/>
                                     <TextBlock x:Name="AppVersionText" FontSize="14" Margin="0,8,0,2"/>
                                     <TextBlock x:Name="AppUpdateStatus" Style="{StaticResource Subtle}" TextWrapping="Wrap"/>
                                     <WrapPanel Margin="0,12,0,0">
@@ -759,7 +1228,21 @@
                                               Checked="AutoAppUpdate_Changed" Unchecked="AutoAppUpdate_Changed"/>
                                     <Border Height="1" Background="{StaticResource Line}" Margin="0,16"/>
                                     <TextBlock x:Name="AboutText" Style="{StaticResource Subtle}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,12"/>
-                                    <WrapPanel>
+                                    <Button Style="{StaticResource BaseButton}" Click="OpenLog_Click" HorizontalAlignment="Left" Margin="0,10,0,0" Padding="12,6"
+                                            ToolTip="Journal local des erreurs (aucune donnée n'est transmise), utile pour diagnostiquer un problème">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="&#xE9F9;" Style="{StaticResource Glyph}" FontSize="13"/>
+                                            <TextBlock Text="Ouvrir le journal" Margin="8,0,0,0"/>
+                                        </StackPanel>
+                                    </Button>
+                                    <Button Style="{StaticResource BaseButton}" Click="ExportDiagnostic_Click" HorizontalAlignment="Left" Margin="0,10,0,0" Padding="12,6"
+                                            ToolTip="Fichier listant chaque application, sa catégorie et ce qui a permis de la classer (rien n'est transmis)">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="&#xE9D9;" Style="{StaticResource Glyph}" FontSize="13"/>
+                                            <TextBlock Text="Exporter le diagnostic du classement" Margin="8,0,0,0"/>
+                                        </StackPanel>
+                                    </Button>
+                                    <WrapPanel Margin="0,10,0,0">
                                         <Button Style="{StaticResource BaseButton}" Content="Revoir la présentation" Click="ShowWelcome_Click" Margin="0,0,10,0"/>
                                         <Button Style="{StaticResource BaseButton}" Content="Ouvrir le dossier des réglages" Click="OpenDataDir_Click"/>
                                     </WrapPanel>
@@ -775,16 +1258,16 @@
                             <Border.Effect><DropShadowEffect BlurRadius="40" ShadowDepth="6" Opacity="0.5"/></Border.Effect>
                             <StackPanel>
                                 <Grid>
-                                    <TextBlock x:Name="ThemeEditorTitle" Text="Modifier le thème" Style="{StaticResource SectionTitle}" FontSize="20"/>
+                                    <TextBlock x:Name="ThemeEditorTitle" Text="Modifier la catégorie" Style="{StaticResource SectionTitle}" FontSize="20"/>
                                     <Button Style="{StaticResource IconButton}" Content="&#xE8BB;" HorizontalAlignment="Right" Click="CancelTheme_Click"/>
                                 </Grid>
                                 <TextBlock Text="NOM" Foreground="{StaticResource Text2}" FontSize="11" FontWeight="SemiBold" Margin="0,18,0,6"/>
-                                <TextBox x:Name="ThemeNameBox" Style="{StaticResource SearchBox}" Tag="Nom du thème"/>
+                                <TextBox x:Name="ThemeNameBox" Style="{StaticResource SearchBox}" Tag="Nom de la catégorie"/>
                                 <TextBlock Text="COULEUR" Foreground="{StaticResource Text2}" FontSize="11" FontWeight="SemiBold" Margin="0,16,0,6"/>
                                 <WrapPanel x:Name="ThemeColors"/>
                                 <TextBlock Text="SYMBOLE" Foreground="{StaticResource Text2}" FontSize="11" FontWeight="SemiBold" Margin="0,12,0,6"/>
                                 <WrapPanel x:Name="ThemeGlyphs"/>
-                                <TextBlock Text="MOTS-CLÉS (un par ligne : nom d'appli, éditeur, dossier…)" Foreground="{StaticResource Text2}" FontSize="11" FontWeight="SemiBold" Margin="0,12,0,6"/>
+                                <TextBlock Text="MOTS-CLÉS (un par ligne : nom d'application, éditeur, dossier…)" Foreground="{StaticResource Text2}" FontSize="11" FontWeight="SemiBold" Margin="0,12,0,6"/>
                                 <TextBox x:Name="ThemeKeywordsBox" Height="190" AcceptsReturn="True" TextWrapping="NoWrap" VerticalScrollBarVisibility="Auto"
                                          Background="#0E0E13" Foreground="{StaticResource Text}" CaretBrush="{StaticResource Text}" BorderBrush="{StaticResource Line}"
                                          Padding="10" FontSize="13"/>
@@ -792,7 +1275,7 @@
                                     <Button x:Name="DeleteThemeButton" Style="{StaticResource BaseButton}" HorizontalAlignment="Left" Click="DeleteTheme_Click">
                                         <StackPanel Orientation="Horizontal">
                                             <TextBlock Text="&#xE74D;" Style="{StaticResource Glyph}" FontSize="13"/>
-                                            <TextBlock Text="Supprimer ce thème" Margin="8,0,0,0"/>
+                                            <TextBlock Text="Supprimer cette catégorie" Margin="8,0,0,0"/>
                                         </StackPanel>
                                     </Button>
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
@@ -812,8 +1295,8 @@
                             <StackPanel>
                                 <Grid>
                                     <StackPanel>
-                                        <TextBlock Text="Trier les applis" Style="{StaticResource SectionTitle}" FontSize="20"/>
-                                        <TextBlock Text="Un clic (ou la touche du chiffre) range l'appli et passe à la suivante." Style="{StaticResource Subtle}" Margin="0,4,0,0"/>
+                                        <TextBlock Text="Trier les applications" Style="{StaticResource SectionTitle}" FontSize="20"/>
+                                        <TextBlock Text="Un clic (ou la touche du chiffre correspondant) classe l'application et passe à la suivante." Style="{StaticResource Subtle}" Margin="0,4,0,0"/>
                                     </StackPanel>
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
                                         <TextBlock x:Name="SorterProgress" Style="{StaticResource Subtle}" VerticalAlignment="Center" Margin="0,0,12,0"/>
@@ -851,20 +1334,308 @@
                                         </StackPanel>
                                     </Button>
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                                        <Button Style="{StaticResource BaseButton}" Click="SorterHide_Click" Margin="0,0,10,0" ToolTip="Touche M">
-                                            <StackPanel Orientation="Horizontal">
-                                                <TextBlock Text="&#xED1A;" Style="{StaticResource Glyph}" FontSize="13"/>
-                                                <TextBlock Text="Masquer cette appli" Margin="8,0,0,0"/>
-                                            </StackPanel>
-                                        </Button>
                                         <Button Style="{StaticResource BaseButton}" Click="SorterSkip_Click" ToolTip="Touche Espace">
                                             <StackPanel Orientation="Horizontal">
-                                                <TextBlock Text="&#xE893;" Style="{StaticResource Glyph}" FontSize="13"/>
-                                                <TextBlock Text="Laisser dans Autres" Margin="8,0,0,0"/>
+                                                <TextBlock x:Name="SorterSkipGlyph" Text="&#xE893;" Style="{StaticResource Glyph}" FontSize="13"/>
+                                                <TextBlock x:Name="SorterSkipText" Text="Laisser dans Autres" Margin="8,0,0,0"/>
                                             </StackPanel>
                                         </Button>
                                     </StackPanel>
                                 </Grid>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+
+                    <!-- ======================= Rangement des fichiers ======================= -->
+                    <Grid x:Name="DocSorterOverlay" Grid.RowSpan="2" Visibility="Collapsed" Background="#D90B0B10">
+                        <Border Width="900" VerticalAlignment="Center" HorizontalAlignment="Center" Background="{StaticResource Surface}"
+                                BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="18" Padding="30,24">
+                            <Border.Effect><DropShadowEffect BlurRadius="40" ShadowDepth="6" Opacity="0.5"/></Border.Effect>
+                            <StackPanel>
+                                <Grid>
+                                    <StackPanel>
+                                        <TextBlock Text="Ranger les éléments un par un" Style="{StaticResource SectionTitle}" FontSize="20"/>
+                                        <TextBlock Text="Un clic (ou la touche du chiffre correspondant) range le fichier dans le dossier choisi et passe au suivant." Style="{StaticResource Subtle}" Margin="0,4,0,0"/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
+                                        <TextBlock x:Name="DocSorterProgress" Style="{StaticResource Subtle}" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                                        <Button Style="{StaticResource IconButton}" Content="&#xE8BB;" Click="DocSorterClose_Click" ToolTip="Terminer (Échap)"/>
+                                    </StackPanel>
+                                </Grid>
+                                <ProgressBar x:Name="DocSorterBar" Height="4" Margin="0,14,0,20" Foreground="{StaticResource Accent}" Background="{StaticResource Surface2}" BorderThickness="0"/>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Border Width="72" Height="72" CornerRadius="14" Background="{StaticResource Surface2}">
+                                        <Image x:Name="DocSorterIcon" Width="56" Height="56" RenderOptions.BitmapScalingMode="HighQuality"/>
+                                    </Border>
+                                    <StackPanel Grid.Column="1" Margin="18,0,0,0" VerticalAlignment="Center">
+                                        <TextBlock x:Name="DocSorterName" FontFamily="{StaticResource DisplayFont}" FontSize="22" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock x:Name="DocSorterInfo" Style="{StaticResource Subtle}" FontSize="12" Margin="0,4,0,0" TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock x:Name="DocSorterSuggest" Foreground="{StaticResource Accent}" FontSize="12.5" Margin="0,4,0,0"/>
+                                    </StackPanel>
+                                    <Button Grid.Column="2" Style="{StaticResource BaseButton}" Click="DocSorterOpen_Click" VerticalAlignment="Center" ToolTip="Ouvrir le fichier pour l'identifier (touche O)">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="&#xE8A7;" Style="{StaticResource Glyph}" FontSize="13"/>
+                                            <TextBlock Text="Ouvrir" Margin="8,0,0,0"/>
+                                        </StackPanel>
+                                    </Button>
+                                </Grid>
+                                <ScrollViewer MaxHeight="330" VerticalScrollBarVisibility="Auto" Margin="0,18,0,8">
+                                    <WrapPanel x:Name="DocSorterTargets"/>
+                                </ScrollViewer>
+                                <Grid Margin="0,8,0,0">
+                                    <Button x:Name="DocSorterBackButton" Style="{StaticResource BaseButton}" HorizontalAlignment="Left" Click="DocSorterBack_Click" ToolTip="Retour arrière">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="&#xE72B;" Style="{StaticResource Glyph}" FontSize="13"/>
+                                            <TextBlock Text="Annuler la dernière action" Margin="8,0,0,0"/>
+                                        </StackPanel>
+                                    </Button>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                        <Button Style="{StaticResource BaseButton}" Click="DocSorterNewFolder_Click" Margin="0,0,10,0" ToolTip="Touche N">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="&#xE8F4;" Style="{StaticResource Glyph}" FontSize="13"/>
+                                                <TextBlock Text="Nouveau dossier…" Margin="8,0,0,0"/>
+                                            </StackPanel>
+                                        </Button>
+                                        <Button Style="{StaticResource BaseButton}" Click="DocSorterRecycle_Click" Margin="0,0,10,0" ToolTip="Envoyer à la Corbeille (touche Suppr), récupérable ensuite">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="&#xE74D;" Style="{StaticResource Glyph}" FontSize="13"/>
+                                                <TextBlock Text="Corbeille" Margin="8,0,0,0"/>
+                                            </StackPanel>
+                                        </Button>
+                                        <Button Style="{StaticResource BaseButton}" Click="DocSorterKeep_Click" Margin="0,0,10,0" ToolTip="Ne plus proposer ce fichier (touche G)">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="&#xE718;" Style="{StaticResource Glyph}" FontSize="13"/>
+                                                <TextBlock Text="Garder sur le bureau" Margin="8,0,0,0"/>
+                                            </StackPanel>
+                                        </Button>
+                                        <Button Style="{StaticResource BaseButton}" Click="DocSorterLater_Click" ToolTip="Touche Espace">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="&#xE893;" Style="{StaticResource Glyph}" FontSize="13"/>
+                                                <TextBlock Text="Plus tard" Margin="8,0,0,0"/>
+                                            </StackPanel>
+                                        </Button>
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+
+                    <!-- ======================= Saisie d'un nom ======================= -->
+                    <!-- ======================= Gestionnaire d'applications ======================= -->
+                    <Grid x:Name="ManagerOverlay" Grid.RowSpan="2" Visibility="Collapsed" Background="#D90B0B10" Panel.ZIndex="10">
+                        <Border Width="860" Margin="0,40" VerticalAlignment="Stretch" HorizontalAlignment="Center" Background="{StaticResource Surface}"
+                                BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="18" Padding="30,24">
+                            <Border.Effect><DropShadowEffect BlurRadius="40" ShadowDepth="6" Opacity="0.5"/></Border.Effect>
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <Grid>
+                                    <StackPanel>
+                                        <TextBlock x:Name="ManagerTitle" Text="Gérer les applications" Style="{StaticResource SectionTitle}" FontSize="20"/>
+                                        <TextBlock Text="Le programme de désinstallation officiel de chaque éditeur est utilisé. Centre PC ne supprime aucun fichier lui-même."
+                                                   Style="{StaticResource Subtle}" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                                    </StackPanel>
+                                    <Button Style="{StaticResource IconButton}" Content="&#xE8BB;" Click="CloseManager_Click" ToolTip="Fermer (Échap)"
+                                            HorizontalAlignment="Right" VerticalAlignment="Top"/>
+                                </Grid>
+                                <Grid Grid.Row="1" Margin="0,18,0,12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Orientation="Horizontal">
+                                        <RadioButton x:Name="ManagerObsoleteChip" Style="{StaticResource Chip}" Checked="ManagerFilter_Changed">
+                                            <TextBlock x:Name="ManagerObsoleteText" Text="Obsolètes"/>
+                                        </RadioButton>
+                                        <RadioButton x:Name="ManagerAllChip" Style="{StaticResource Chip}" Checked="ManagerFilter_Changed">
+                                            <TextBlock x:Name="ManagerAllText" Text="Toutes"/>
+                                        </RadioButton>
+                                    </StackPanel>
+                                    <TextBox x:Name="ManagerSearch" Grid.Column="1" Width="300" Style="{StaticResource SearchBox}" Tag="Rechercher une application"
+                                             TextChanged="ManagerSearch_TextChanged"/>
+                                </Grid>
+                                <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+                                    <StackPanel>
+                                        <ItemsControl x:Name="ManagerList">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border Background="{StaticResource Surface2}" CornerRadius="12" Padding="14,10" Margin="0,0,0,8">
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="Auto"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="Auto"/>
+                                                            </Grid.ColumnDefinitions>
+                                                            <Grid Width="34" Height="34">
+                                                                <Border CornerRadius="9" Background="{Binding App.ThemeBrush}"
+                                                                        Visibility="{Binding App.HasIcon, Converter={StaticResource InvBoolToVis}}">
+                                                                    <TextBlock Text="{Binding App.Initial}" FontSize="15" FontWeight="SemiBold" Foreground="White"
+                                                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                </Border>
+                                                                <Image Source="{Binding App.Icon}" Width="32" Height="32" RenderOptions.BitmapScalingMode="HighQuality"/>
+                                                            </Grid>
+                                                            <StackPanel Grid.Column="1" Margin="14,0" VerticalAlignment="Center">
+                                                                <StackPanel Orientation="Horizontal">
+                                                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="14"/>
+                                                                    <Border Background="#33F59E0B" CornerRadius="6" Padding="7,1" Margin="10,0,0,0" VerticalAlignment="Center"
+                                                                            Visibility="{Binding App.IsObsolete, Converter={StaticResource BoolToVis}}">
+                                                                        <TextBlock Text="Obsolète" Foreground="#F59E0B" FontSize="11" FontWeight="SemiBold"/>
+                                                                    </Border>
+                                                                </StackPanel>
+                                                                <TextBlock Text="{Binding Detail}" Style="{StaticResource Subtle}" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                                                                <TextBlock Text="{Binding Status}" Foreground="{StaticResource Accent}" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,0"
+                                                                           Visibility="{Binding HasStatus, Converter={StaticResource BoolToVis}}"/>
+                                                            </StackPanel>
+                                                            <Button Grid.Column="2" Style="{StaticResource BaseButton}" Content="{Binding ActionText}" Tag="{Binding}"
+                                                                    IsEnabled="{Binding CanAct}" Click="ManagerUninstall_Click" VerticalAlignment="Center" MinWidth="130"/>
+                                                        </Grid>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                        <TextBlock x:Name="ManagerEmpty" Style="{StaticResource Subtle}" HorizontalAlignment="Center" Margin="0,40,0,0" Visibility="Collapsed"/>
+                                    </StackPanel>
+                                </ScrollViewer>
+                                <Grid Grid.Row="3" Margin="0,14,0,0">
+                                    <TextBlock x:Name="ManagerFooter" Style="{StaticResource Subtle}" FontSize="12" VerticalAlignment="Center" TextWrapping="Wrap" Margin="0,0,220,0"/>
+                                    <Button Style="{StaticResource BaseButton}" Content="Applications installées de Windows" Click="ManagerWindowsSettings_Click"
+                                            HorizontalAlignment="Right"/>
+                                </Grid>
+                            </Grid>
+                        </Border>
+                    </Grid>
+
+                    <!-- ======================= Plan de rangement / vérification ======================= -->
+                    <Grid x:Name="DocPlanOverlay" Grid.RowSpan="2" Visibility="Collapsed" Background="#D90B0B10" Panel.ZIndex="10">
+                        <Border MaxWidth="1040" Margin="36,36" VerticalAlignment="Stretch" HorizontalAlignment="Stretch" Background="{StaticResource Surface}"
+                                BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="18" Padding="30,24">
+                            <Border.Effect><DropShadowEffect BlurRadius="40" ShadowDepth="6" Opacity="0.5"/></Border.Effect>
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <Grid>
+                                    <StackPanel Margin="0,0,40,0">
+                                        <TextBlock x:Name="DocPlanOverlayTitle" Style="{StaticResource SectionTitle}" FontSize="20"/>
+                                        <TextBlock x:Name="DocPlanOverlayText" Style="{StaticResource Subtle}" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                                    </StackPanel>
+                                    <Button Style="{StaticResource IconButton}" Content="&#xE8BB;" Click="DocPlanClose_Click" ToolTip="Fermer (Échap)"
+                                            HorizontalAlignment="Right" VerticalAlignment="Top"/>
+                                </Grid>
+                                <Border Grid.Row="1" Background="#1A10B981" BorderBrush="#3310B981" BorderThickness="1" CornerRadius="10" Padding="12,8" Margin="0,14,0,6" HorizontalAlignment="Left">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="&#xE72E;" Style="{StaticResource Glyph}" FontSize="14" Foreground="MediumSeaGreen" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                        <TextBlock x:Name="DocPlanReassurance" TextWrapping="Wrap" FontSize="12.5" MaxWidth="780" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Border>
+                                <ScrollViewer x:Name="DocPlanScroll" Grid.Row="2" VerticalScrollBarVisibility="Auto">
+                                    <StackPanel x:Name="DocPlanList"/>
+                                </ScrollViewer>
+                                <!-- Rangement proposé : liste à gauche, origine → destination de l'élément choisi à droite -->
+                                <Grid x:Name="DocPlanSplit" Grid.Row="2" Visibility="Collapsed">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="330"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Border Background="{StaticResource Surface2}" CornerRadius="12" Padding="6">
+                                        <ScrollViewer x:Name="DocPlanItemsScroll" VerticalScrollBarVisibility="Auto">
+                                            <StackPanel x:Name="DocPlanItems"/>
+                                        </ScrollViewer>
+                                    </Border>
+                                    <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto" Margin="20,0,0,0">
+                                        <StackPanel x:Name="DocPlanDetail"/>
+                                    </ScrollViewer>
+                                </Grid>
+                                <Grid Grid.Row="3" Margin="0,14,0,0">
+                                    <TextBlock x:Name="DocPlanSummary" Style="{StaticResource Subtle}" VerticalAlignment="Center" TextWrapping="Wrap" Margin="0,0,380,0"/>
+                                    <StackPanel x:Name="DocPlanButtons" Orientation="Horizontal" HorizontalAlignment="Right"/>
+                                </Grid>
+                            </Grid>
+                        </Border>
+                        <!-- Aperçu agrandi de l'élément affiché (clic, Espace ou Échap pour revenir) -->
+                        <Grid x:Name="DocZoom" Visibility="Collapsed" Background="#F00B0B10" Cursor="Hand" MouseLeftButtonUp="DocZoom_Click">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="*"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <TextBlock x:Name="DocZoomGlyph" Style="{StaticResource Glyph}" FontSize="120" Opacity="0.4" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            <Image x:Name="DocZoomImage" Margin="48,40,48,12" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality"/>
+                            <!-- Rendu réel des documents (gestionnaire d'aperçu de Windows) et des textes -->
+                            <Border x:Name="DocZoomHostBox" Margin="48,40,48,12" Visibility="Collapsed" Background="White"/>
+                            <Border x:Name="DocZoomTextBox" Margin="48,40,48,12" Visibility="Collapsed" Background="{StaticResource Surface2}" CornerRadius="10">
+                                <TextBox x:Name="DocZoomText" IsReadOnly="True" FontFamily="Cascadia Mono, Consolas" FontSize="13" Background="Transparent" BorderThickness="0"
+                                         Foreground="{StaticResource Text}" Padding="16" Cursor="IBeam" TextWrapping="NoWrap"
+                                         VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"/>
+                            </Border>
+                            <StackPanel Grid.Row="1" HorizontalAlignment="Center" Margin="0,0,0,24">
+                                <TextBlock x:Name="DocZoomName" FontWeight="SemiBold" FontSize="15" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="900"/>
+                                <TextBlock x:Name="DocZoomStatus" Style="{StaticResource Subtle}" FontSize="12" HorizontalAlignment="Center" Margin="0,4,0,0" Foreground="#B9AAFF"/>
+                                <!-- Retour : en bas, loin des boutons de la fenêtre (une croix en haut à droite se superposait à « Fermer ») -->
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,8,0,0">
+                                    <Button Style="{StaticResource BaseButton}" Click="DocZoomClose_Click" Padding="14,5" Cursor="Hand">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="&#xE72B;" Style="{StaticResource Glyph}" FontSize="12"/>
+                                            <TextBlock Text="Revenir" Margin="8,0,0,0"/>
+                                        </StackPanel>
+                                    </Button>
+                                    <TextBlock Style="{StaticResource Subtle}" FontSize="12" VerticalAlignment="Center" Margin="12,0,0,0"
+                                               Text="Échap · flèches ↑ ↓ : élément précédent ou suivant"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Grid>
+                    </Grid>
+
+                    <!-- Outil de test d'un périphérique -->
+                    <Grid x:Name="DeviceTestOverlay" Grid.RowSpan="2" Visibility="Collapsed" Background="#D90B0B10" Panel.ZIndex="10">
+                        <Border MaxWidth="1000" Margin="36,40" VerticalAlignment="Stretch" HorizontalAlignment="Stretch" Background="{StaticResource Surface}"
+                                BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="18" Padding="30,24">
+                            <Border.Effect><DropShadowEffect BlurRadius="40" ShadowDepth="6" Opacity="0.5"/></Border.Effect>
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+                                <Grid Margin="0,0,0,14">
+                                    <TextBlock x:Name="DeviceTestTitle" Style="{StaticResource SectionTitle}" FontSize="20" VerticalAlignment="Center"/>
+                                    <Button Style="{StaticResource BaseButton}" HorizontalAlignment="Right" Click="DeviceTestClose_Click" Padding="14,6">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="&#xE8BB;" Style="{StaticResource Glyph}" FontSize="11"/>
+                                            <TextBlock Text="Terminer" Margin="8,0,0,0"/>
+                                        </StackPanel>
+                                    </Button>
+                                </Grid>
+                                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                                    <StackPanel x:Name="DeviceTestHost"/>
+                                </ScrollViewer>
+                            </Grid>
+                        </Border>
+                    </Grid>
+
+                    <Grid x:Name="PromptOverlay" Grid.RowSpan="2" Visibility="Collapsed" Background="#D90B0B10" Panel.ZIndex="20">
+                        <Border Width="480" VerticalAlignment="Center" HorizontalAlignment="Center" Background="{StaticResource Surface}"
+                                BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="16" Padding="26,22">
+                            <Border.Effect><DropShadowEffect BlurRadius="40" ShadowDepth="6" Opacity="0.5"/></Border.Effect>
+                            <StackPanel>
+                                <TextBlock x:Name="PromptTitle" Style="{StaticResource SectionTitle}"/>
+                                <TextBlock x:Name="PromptHint" Style="{StaticResource Subtle}" TextWrapping="Wrap" Margin="0,4,0,12"/>
+                                <TextBox x:Name="PromptBox" Style="{StaticResource SearchBox}" Tag="Nom" KeyDown="PromptBox_KeyDown"/>
+                                <TextBlock x:Name="PromptError" Foreground="IndianRed" FontSize="12" Margin="0,6,0,0" Visibility="Collapsed" TextWrapping="Wrap"/>
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+                                    <Button Style="{StaticResource BaseButton}" Content="Annuler" Click="PromptCancel_Click" Margin="0,0,10,0"/>
+                                    <Button Style="{StaticResource AccentButton}" Content="Valider" Click="PromptOk_Click"/>
+                                </StackPanel>
                             </StackPanel>
                         </Border>
                     </Grid>
@@ -882,31 +1653,65 @@
                         <Image Source="app.ico" Width="34" Height="34"/>
                     </Border>
                     <TextBlock Text="Bienvenue dans Centre PC" FontFamily="{StaticResource DisplayFont}" FontSize="28" FontWeight="SemiBold" Margin="0,18,0,4"/>
-                    <TextBlock Text="Tout ton PC en un seul endroit. Voici les trois choses à savoir :" Style="{StaticResource Subtle}" FontSize="14"/>
+                    <TextBlock Text="Votre PC centralisé en un seul endroit. Trois points essentiels :" Style="{StaticResource Subtle}" FontSize="14"/>
                     <UniformGrid Columns="3" Margin="-8,24,-8,0">
                         <Border Style="{StaticResource Card}" Margin="8">
                             <StackPanel>
                                 <TextBlock Text="&#xE71D;" Style="{StaticResource Glyph}" FontSize="24" HorizontalAlignment="Left" Foreground="#8B7CFF"/>
-                                <TextBlock Text="1. Tes applis" FontWeight="SemiBold" FontSize="15" Margin="0,12,0,6"/>
-                                <TextBlock TextWrapping="Wrap" Style="{StaticResource Subtle}" Text="Elles sont triées par thème automatiquement. Tape un nom pour lancer une appli."/>
+                                <TextBlock Text="1. Vos applications" FontWeight="SemiBold" FontSize="15" Margin="0,12,0,6"/>
+                                <TextBlock TextWrapping="Wrap" Style="{StaticResource Subtle}" Text="Elles sont classées automatiquement par catégorie. Saisissez un nom pour lancer une application."/>
                             </StackPanel>
                         </Border>
                         <Border Style="{StaticResource Card}" Margin="8">
                             <StackPanel>
                                 <TextBlock Text="&#xE7F4;" Style="{StaticResource Glyph}" FontSize="24" HorizontalAlignment="Left" Foreground="#3B82F6"/>
-                                <TextBlock Text="2. Ton bureau" FontWeight="SemiBold" FontSize="15" Margin="0,12,0,6"/>
-                                <TextBlock TextWrapping="Wrap" Style="{StaticResource Subtle}" Text="Un clic sur « Ranger le bureau » et c'est propre. Tout peut être remis comme avant."/>
+                                <TextBlock Text="2. Votre bureau" FontWeight="SemiBold" FontSize="15" Margin="0,12,0,6"/>
+                                <TextBlock TextWrapping="Wrap" Style="{StaticResource Subtle}" Text="« Ranger le bureau » le libère en un clic. L'état initial peut être rétabli à tout moment."/>
                             </StackPanel>
                         </Border>
                         <Border Style="{StaticResource Card}" Margin="8">
                             <StackPanel>
                                 <TextBlock Text="&#xE895;" Style="{StaticResource Glyph}" FontSize="24" HorizontalAlignment="Left" Foreground="#10B981"/>
                                 <TextBlock Text="3. Les mises à jour" FontWeight="SemiBold" FontSize="15" Margin="0,12,0,6"/>
-                                <TextBlock TextWrapping="Wrap" Style="{StaticResource Subtle}" Text="Centre PC vérifie tout seul. Une pastille te prévient, puis un clic met tout à jour."/>
+                                <TextBlock TextWrapping="Wrap" Style="{StaticResource Subtle}" Text="Centre PC vérifie automatiquement. Une pastille vous signale les mises à jour, installées ensuite en un clic."/>
                             </StackPanel>
                         </Border>
                     </UniformGrid>
-                    <Button Style="{StaticResource AccentButton}" Content="C'est parti" HorizontalAlignment="Right" Padding="28,12" Margin="0,24,0,0" Click="Welcome_Click"/>
+                    <Button Style="{StaticResource AccentButton}" Content="Commencer" HorizontalAlignment="Right" Padding="28,12" Margin="0,24,0,0" Click="Welcome_Click"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- Nouveauté proposée une seule fois, au premier lancement qui suit son arrivée : l'accès rapide -->
+        <Grid x:Name="QuickOfferOverlay" Visibility="Collapsed" Background="#E6090910">
+            <Border Width="620" VerticalAlignment="Center" HorizontalAlignment="Center" Background="{StaticResource Surface}"
+                    BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="20" Padding="36,30">
+                <Border.Effect><DropShadowEffect BlurRadius="40" ShadowDepth="6" Opacity="0.5"/></Border.Effect>
+                <StackPanel>
+                    <StackPanel Orientation="Horizontal">
+                        <Border Width="48" Height="48" CornerRadius="14" Background="{StaticResource AccentGradient}">
+                            <TextBlock Text="&#xE945;" Style="{StaticResource Glyph}" FontSize="22" Foreground="White"/>
+                        </Border>
+                        <Border Background="#2D2560" CornerRadius="8" Padding="8,2" Margin="14,0,0,0" VerticalAlignment="Center">
+                            <TextBlock Text="Nouveau" FontSize="12" FontWeight="SemiBold" Foreground="#B9AAFF"/>
+                        </Border>
+                    </StackPanel>
+                    <TextBlock Text="Ouvrez vos applications en un instant" FontFamily="{StaticResource DisplayFont}" FontSize="24" FontWeight="SemiBold" Margin="0,16,0,6"/>
+                    <TextBlock x:Name="QuickOfferText" Style="{StaticResource Subtle}" FontSize="14" TextWrapping="Wrap"/>
+                    <!-- Le raccourci, dessiné comme des touches -->
+                    <WrapPanel x:Name="QuickOfferKeys" Margin="0,18,0,0"/>
+                    <Border Style="{StaticResource Card}" Margin="0,18,0,0" Padding="16,12">
+                        <StackPanel>
+                            <TextBlock TextWrapping="Wrap" Style="{StaticResource Subtle}" FontSize="12.5"
+                                       Text="Discret : aucune fenêtre à gérer. Fermer Centre PC le garde disponible près de l'horloge ; clic droit sur l'icône › Quitter pour l'arrêter. Tout se règle ou se désactive dans Réglages › Accès rapide."/>
+                            <CheckBox x:Name="QuickOfferStartup" IsChecked="True" Margin="0,10,0,0"
+                                      Content="Disponible dès l'ouverture de session (sans fenêtre, seulement l'icône)"/>
+                        </StackPanel>
+                    </Border>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,22,0,0">
+                        <Button Style="{StaticResource BaseButton}" Content="Non merci" Click="QuickOfferNo_Click" Padding="20,10" Margin="0,0,10,0"/>
+                        <Button Style="{StaticResource AccentButton}" Content="Activer l'accès rapide" Click="QuickOfferYes_Click" Padding="22,10"/>
+                    </StackPanel>
                 </StackPanel>
             </Border>
         </Grid>

@@ -4,3 +4,4 @@ publish/
 .vs/
 *.user
 build.log
+verification.log

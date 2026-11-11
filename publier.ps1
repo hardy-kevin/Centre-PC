@@ -16,6 +16,7 @@ if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
 # Construction automatique sur GitHub (fichier placé ici car il ne peut pas être copié directement dans .github)
 New-Item -ItemType Directory -Path '.github\workflows' -Force | Out-Null
 Copy-Item 'Outils\release.yml' '.github\workflows\release.yml' -Force
+Copy-Item 'Outils\tests.yml' '.github\workflows\tests.yml' -Force   # tests automatiques à chaque envoi
 Remove-Item 'Outils\README-depot-public.md' -ErrorAction SilentlyContinue
 
 if (-not (Test-Path .git)) { git init -b main | Out-Null }
@@ -24,7 +25,7 @@ if (-not (git config user.email)) { git config user.email 'hardy-kevin@users.nor
 if (git remote) { git remote set-url origin $repoUrl } else { git remote add origin $repoUrl }
 
 # Version : celle du projet, augmentée automatiquement si elle est déjà publiée
-$proj = Get-Content CentrePC.csproj -Raw
+$proj = Get-Content CentrePC.csproj -Raw -Encoding UTF8   # sans -Encoding, PowerShell 5.1 lit en ANSI et abîme les accents
 if ($proj -notmatch '<Version>(\d+)\.(\d+)\.(\d+)</Version>') { Stop-WithError "Version introuvable dans CentrePC.csproj." }
 $maj = [int]$Matches[1]; $min = [int]$Matches[2]; $pat = [int]$Matches[3]
 Write-Host "Connexion à GitHub (une fenêtre de connexion peut s'ouvrir la première fois)..." -ForegroundColor Cyan

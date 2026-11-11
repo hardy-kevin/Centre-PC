@@ -10,7 +10,7 @@ namespace CentrePC.Core;
 public static class DefaultThemes
 {
     /// <summary>Augmenter quand la liste change : les nouveautés sont fusionnées dans les configs existantes.</summary>
-    public const int Version = 3;
+    public const int Version = 7;
 
     /// <summary>Anciens noms de thèmes (versions précédentes) → nouveau nom.</summary>
     public static readonly Dictionary<string, string> Renamed = new(StringComparer.OrdinalIgnoreCase)
@@ -19,6 +19,77 @@ public static class DefaultThemes
         ["Multimédia"] = "Vidéo et streaming",
         ["Outils système"] = "Utilitaires",
     };
+
+    /// <summary>
+    /// Mots-clés retirés ou déplacés depuis une version précédente (version → thème → mots-clés).
+    /// Appliqué une seule fois lors de la mise à niveau : un mot-clé ajouté ensuite par l'utilisateur n'est pas touché.
+    /// </summary>
+    public static readonly Dictionary<int, Dictionary<string, string[]>> Removed = new()
+    {
+        [4] = new(StringComparer.OrdinalIgnoreCase)
+        {
+            // « Cartes » (application Windows retirée) et Power Automate (automatisation) n'étaient pas de la bureautique
+            ["Bureautique"] = new[] { "Power Automate", "Cartes", "Maps" },
+            // « Exécuter » seul attrapait des noms comme « Exécuter en tant que… » : remplacé par un nom exact
+            ["Outils Windows"] = new[] { "Exécuter" },
+        },
+        [5] = new(StringComparer.OrdinalIgnoreCase)
+        {
+            // Gestionnaires de mods, extensions et compagnons de jeu : catégorie « Outils pour les jeux »
+            ["Lanceurs de jeux"] = new[] { "CurseForge", "WowUp", "Overwolf", "Mod Manager", "Vortex", "Mod Organizer", "r2modman",
+                                           "Thunderstore", "=PSApp", "=PS App" },
+            ["Jeux"] = new[] { "Content Manager" },
+            ["Matériel et pilotes"] = new[] { "SimHub" },
+        },
+        [7] = new(StringComparer.OrdinalIgnoreCase)
+        {
+            // « Files » (application de gestion de fichiers) attrapait « Program Files » : nom exact seulement
+            ["Utilitaires"] = new[] { "Files" },
+            // La Game Bar est un outil (capture, performances), pas un jeu
+            ["Jeux"] = new[] { "Game Bar", "Xbox Game Bar" },
+        },
+    };
+
+    /// <summary>
+    /// Catégories créées automatiquement dès qu'une application en relève (mots-clés, description, sources en ligne)
+    /// et qu'aucune catégorie existante ne convient. Tant qu'elles sont vides, elles n'apparaissent nulle part.
+    /// After : catégorie après laquelle elle s'insère. Une catégorie supprimée par l'utilisateur n'est pas recréée.
+    /// </summary>
+    public static readonly (Category cat, string after)[] Catalog =
+    {
+        (C("Outils pour les jeux", "\uE7FC", "#A855F7",
+            "CurseForge", "WowUp", "Overwolf", "Mod Manager", "Vortex", "Mod Organizer", "r2modman", "Thunderstore", "Content Manager",
+            "SimHub", "Crew Chief", "=Medal", "Medal.tv", "Outplayed", "=Blitz", "Porofessor", "Mobalytics", "Raider.IO", "WeakAuras Companion",
+            "WarcraftLogs", "Warcraft Logs", "TradeSkillMaster", "Mod Loader", "Fabric Installer", "Forge Installer", "OptiFine",
+            "Nexus Mods", "Wabbajack", "ReShade", "Special K", "Cheat Engine", "WeMod", "Lossless Scaling", "FPS Monitor",
+            "Steam Achievement Manager", "Game Helper", "Game Bar", "Xbox Game Bar"), "Lanceurs de jeux"),
+        (C("Santé et sport", "\uE95E", "#22C55E",
+            "Strava", "Garmin Connect", "Garmin Express", "Zwift", "Fitbit", "Polar Flowsync", "Suunto", "MyFitnessPal", "Fitness"), "Éducation"),
+        (C("Voyages et transports", "\uE707", "#0EA5E9",
+            "Google Earth Pro", "Waze", "SNCF Connect", "Trainline", "Booking", "Airbnb", "TripAdvisor", "Flightradar24", "Garmin BaseCamp",
+            "Garmin Explore", "TomTom"), "Éducation"),
+        (C("Lecture et bandes dessinées", "\uE8F1", "#F97316",
+            "Kobo", "Thorium Reader", "Readium", "ComicRack", "YACReader", "CDisplayEx", "Comixology", "Izneo", "Webtoon", "Audible"), "Éducation"),
+        (C("Maison connectée", "\uE80F", "#84CC16",
+            "Home Assistant", "Philips Hue", "Hue Sync", "Google Home", "SmartThings", "Tuya", "Smart Life", "Somfy", "Netatmo", "Domoticz",
+            "Jeedom", "Homey", "Nanoleaf", "Govee", "LIFX", "Tapo", "Domotique"), "Matériel et pilotes"),
+        // Scripts personnels (.bat, .ps1, .py…) : reconnus par leur cible, pas par des mots-clés
+        (C(AppKinds.ScriptsCategory, "\uE943", "#64748B"), "Utilitaires"),
+    };
+
+    /// <summary>
+    /// Mots-clés trop généraux pour décider seuls (« Launcher » : « Adobe Redeem Launcher » n'est pas un lanceur de jeux).
+    /// Ils ne servent qu'en dernier recours, quand aucun autre indice (éditeur, description, sources en ligne, applications voisines) n'a suffi.
+    /// </summary>
+    public static readonly HashSet<string> WeakKeywords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Launcher", "Windows", "Tools", "Utility", "Utilitaire", "Server", "Serveur", "Developer", "Développeur", "SDK", "IDE",
+        "Security", "Sécurité", "Finance", "Education", "Éducation", "Learning", "Formation", "Photo", "Dessin", "Bureautique",
+        "Backup", "Sauvegarde", "Driver", "Pilote", "Printer", "Imprimante", "CAD", "CAO", "Fitness", "Domotique"
+    };
+
+    public static (Category cat, string after) CatalogEntry(string name) =>
+        Catalog.FirstOrDefault(c => c.cat.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
 
     private static Category C(string name, string glyph, string color, params string[] kw) =>
         new() { Name = name, Glyph = glyph, Color = color, Keywords = kw.ToList() };
@@ -29,7 +100,7 @@ public static class DefaultThemes
             // Liens et dossiers de bibliothèques de jeux
             "steam://rungameid", @"steamapps\common", "com.epicgames.launcher://apps", "battlenet://", "uplay://", "origin2://",
             "goggalaxy://", "xbox://", "ms-xbl-", @"Riot Games\", @"Epic Games\", @"Ubisoft Game Launcher\games", "GOG Games", "EA Games",
-            "XboxGames", "SteamLibrary", "Early Access", "Dedicated Server", "Game Bar", "Xbox Game Bar", "Content Manager",
+            "XboxGames", "SteamLibrary", "Early Access", "Dedicated Server",
             // Jeux et licences connus
             "World of Warcraft", "WoW", "Diablo", "Overwatch", "Hearthstone", "StarCraft", "Warcraft", "Call of Duty", "League of Legends",
             "Valorant", "Fortnite", "Minecraft", "Rocket League", "Counter-Strike", "CS2", "Dota", "Apex Legends", "Dofus", "Wakfu",
@@ -50,11 +121,10 @@ public static class DefaultThemes
         C("Lanceurs de jeux", "", "#C026D3",
             "Steam", "Epic Games Launcher", "EpicGamesLauncher", "Battle.net", "EA app", "EA", "Origin", "Ubisoft Connect", "Ubisoft",
             "GOG Galaxy", "GOG", "Rockstar Games Launcher", "Riot Client", "Client Riot", "Ankama Launcher", "Ankama", "RSI Launcher",
-            "Amazon Games", "Xbox", "Xbox App", "Playnite", "CurseForge", "WowUp", "Overwolf", "Heroic", "itch", "Prism Launcher",
+            "Amazon Games", "Xbox", "Xbox App", "Playnite", "Heroic", "itch", "Prism Launcher",
             "Minecraft Launcher", "Paradox Launcher", "BlueStacks", "LDPlayer", "MuMu Player", "NoxPlayer", "Nintendo", "Ryujinx", "Yuzu",
             "Dolphin", "RetroArch", "PCSX2", "RPCS3", "DuckStation", "PPSSPP", "Cemu", "Steam Big Picture", "GeForce NOW", "Boosteroid",
-            "Xbox Cloud Gaming", "PS Remote Play", "PlayStation", "Moonlight", "Sunshine", "Launcher", "Game Launcher", "Mod Manager",
-            "Vortex", "Mod Organizer", "r2modman", "Thunderstore"),
+            "Xbox Cloud Gaming", "PS Remote Play", "PlayStation", "PlayStation App", "PlayStation Plus", "Sony Interactive Entertainment", "Moonlight", "Sunshine", "Launcher", "Game Launcher"),
 
         C("Internet", "", "#3B82F6",
             "Google Chrome", "Chrome", "Firefox", "Mozilla Firefox", "Microsoft Edge", "Edge", "Opera", "Opera GX", "Brave", "Vivaldi",
@@ -92,6 +162,7 @@ public static class DefaultThemes
             "Outplayed", "Caméra", "Camera", "Webcam", "Logi Capture", "Elgato Camera Hub", "Vidéo", "Video"),
 
         C("Photo et graphisme", "", "#F97316",
+            "Adobe Inc.", "Adobe Systems",
             "Photos", "Paint", "Paint.NET", "Paint 3D", "Photoshop", "Lightroom", "Illustrator", "InDesign", "Adobe Express", "Acrobat Pro",
             "GIMP", "Krita", "Inkscape", "Affinity", "Affinity Photo", "Affinity Designer", "Affinity Publisher", "Canva", "Figma", "Sketch",
             "Darktable", "RawTherapee", "Capture One", "DxO", "Luminar", "Topaz Photo", "IrfanView", "XnView", "FastStone", "ImageGlass",
@@ -105,7 +176,7 @@ public static class DefaultThemes
             "PDF", "SumatraPDF", "Foxit", "PDF24", "PDFgear", "Okular", "Xournal", "Notepad++", "Bloc-notes", "Notepad", "Notion",
             "Obsidian", "Evernote", "Joplin", "Logseq", "Typora", "Simplenote", "Pense-bête", "Sticky Notes", "Calendrier", "Calendar",
             "Calculatrice", "Calculator", "Microsoft To Do", "To Do", "Todoist", "TickTick", "Trello", "Asana", "ClickUp",
-            "Power Automate", "Météo", "Weather", "Cartes", "Maps", "Horloge", "Clock", "Alarmes", "Kindle", "Calibre", "Adobe Digital Editions",
+            "Météo", "Weather", "Horloge", "Clock", "Alarmes", "Kindle", "Calibre", "Adobe Digital Editions",
             "Zotero", "Mendeley", "DeepL", "Antidote", "Grammarly", "LanguageTool", "Dictionnaire", "Scanner", "NAPS2", "Bureautique"),
 
         C("Gestion et finance", "", "#CA8A04",
@@ -179,7 +250,7 @@ public static class DefaultThemes
             "Arc Control", "Realtek", "Realtek Audio Console", "Audio Console", "Logitech", "G HUB", "Logi Options", "Razer", "Synapse",
             "Corsair", "iCUE", "SteelSeries", "SteelSeries GG", "HyperX", "NGENUITY", "ROCCAT", "Wootility", "Glorious Core", "ASUS",
             "Armoury Crate", "MyASUS", "MSI", "MSI Center", "Dragon Center", "MSI Afterburner", "Afterburner", "RivaTuner", "GIGABYTE",
-            "Control Center", "ASRock", "Fanatec", "Fanatec Control Panel", "Thrustmaster", "Moza", "Pit House", "Simucube", "SimHub",
+            "Control Center", "ASRock", "Fanatec", "Fanatec Control Panel", "Thrustmaster", "Moza", "Pit House", "Simucube",
             "Logitech G", "Cardo", "Accessoires Xbox", "Xbox Accessories", "DS4Windows", "DSX", "Steam Input", "Meta Horizon", "Oculus",
             "Virtual Desktop", "Pico", "HTC Vive", "Varjo", "HWiNFO", "CPU-Z", "GPU-Z", "HWMonitor", "AIDA64", "CrystalDiskInfo",
             "CrystalDiskMark", "Samsung Magician", "WD Dashboard", "Crucial Storage Executive", "OpenRGB", "SignalRGB", "FanControl",
@@ -190,9 +261,9 @@ public static class DefaultThemes
         C("Utilitaires", "", "#14B8A6",
             "7-Zip", "7-Zip File Manager", "WinRAR", "PeaZip", "Bandizip", "NanaZip", "CCleaner", "BleachBit", "Revo Uninstaller",
             "IObit", "Windhawk", "PowerToys", "Everything", "Listary", "Flow Launcher", "Raycast", "Wox", "TreeSize", "WinDirStat",
-            "WizTree", "SpaceSniffer", "Rufus", "Ventoy", "balenaEtcher", "Etcher", "Files", "OneCommander", "Directory Opus",
-            "Total Commander", "Double Commander", "Q-Dir", "Ditto",
-            "ClipboardFusion", "AutoHotkey", "Keypirinha", "f.lux", "Rainmeter", "Wallpaper Engine", "Lively", "TranslucentTB",
+            "WizTree", "SpaceSniffer", "Rufus", "Ventoy", "balenaEtcher", "Etcher", "OneCommander", "Directory Opus",
+            "Total Commander", "Double Commander", "Q-Dir", "Ditto", "=Files",
+            "ClipboardFusion", "AutoHotkey", "Power Automate", "Power Automate Desktop", "Keypirinha", "f.lux", "Rainmeter", "Wallpaper Engine", "Lively", "TranslucentTB",
             "StartAllBack", "Start11", "ExplorerPatcher", "Open-Shell", "Fences", "Ninite", "UniGetUI", "WingetUI", "Chocolatey", "Scoop",
             "Patch My PC", "SUMo", "Mise à jour PC", "Centre PC", "Ranger le bureau", "Annuler le rangement", "Range Bureau",
             "O&O ShutUp", "Optimizer", "Bulk Rename", "Advanced Renamer", "Duplicate Cleaner", "dupeGuru", "Recuva", "TestDisk", "PhotoRec",
@@ -206,7 +277,7 @@ public static class DefaultThemes
             "Component Services", "Services de composants", "Computer Management", "Gestion de l'ordinateur", "Gestion des disques",
             "Disk Management", "Configuration du système", "System Configuration", "Informations système", "System Information",
             "Loupe", "Magnify", "Memory Diagnostics", "Diagnostic de la mémoire", "Windows Memory Diagnostic", "Narrateur", "Narrator",
-            "Exécuter", "Services", "Steps Recorder", "Enregistreur d'actions", "Accès vocal", "Voice Access", "VoiceAccess",
+            "=Exécuter", "=Exécuter…", "=Run", "=Cartes", "=Maps", "Windows Maps", "Services", "Steps Recorder", "Enregistreur d'actions", "Accès vocal", "Voice Access", "VoiceAccess",
             "Sous-titres en direct", "Live Captions", "LiveCaptions", "Hub de commentaires", "Feedback Hub", "Observateur d'événements",
             "Event Viewer", "Éditeur du Registre", "Registry Editor", "Regedit", "Défragmenter", "Defragment", "Optimiser les lecteurs",
             "dfrgui", "Nettoyage de disque", "Disk Cleanup", "Microsoft Store", "Windows HDR", "À propos de Windows", "Actions par clic",

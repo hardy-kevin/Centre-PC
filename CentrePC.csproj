@@ -12,9 +12,9 @@
     <Product>Centre PC</Product>
     <Authors>Kevin Hardy</Authors>
     <Company>Kevin Hardy</Company>
-    <Copyright>Ã‚Â© 2026 Kevin Hardy</Copyright>
-    <Description>Applications, bureau et mises ÃƒÂ  jour de Windows en un seul endroit.</Description>
-    <Version>1.2.1</Version>
+    <Copyright>© 2026 Kevin Hardy</Copyright>
+    <Description>Applications, bureau et mises à jour de Windows en un seul endroit.</Description>
+    <Version>1.2.2</Version>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>true</SelfContained>
     <PublishSingleFile>true</PublishSingleFile>
@@ -25,6 +25,12 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="System.Management" Version="8.0.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Le projet de tests a son propre .csproj : ses fichiers ne font pas partie de l'appli -->
+    <Compile Remove="Tests\**" />
+    <None Remove="Tests\**" />
+    <Page Remove="Tests\**" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="Scripts\maj.ps1" LogicalName="maj.ps1" />

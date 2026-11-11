@@ -6,8 +6,27 @@ namespace CentrePC;
 
 public partial class App : Application
 {
+    /// <summary>Lancé par un clic sur la notification : ouvrir directement la page Mises à jour.</summary>
+    public static bool OpenUpdatesPage;
+
     protected override void OnStartup(StartupEventArgs e)
     {
+        // Vérification quotidienne (tâche planifiée) : rien à afficher sauf une notification
+        if (e.Args.Contains("--check"))
+        {
+            // Centre PC déjà ouvert : sa pastille suffit, pas de notification en double
+            if (!Mutex.TryOpenExisting(@"Local\CentrePC_Instance", out var running))
+            {
+                Settings.Load();
+                Settings.ReadOnly = true;
+                Task.Run(() => BackgroundCheck.RunAsync()).GetAwaiter().GetResult();
+            }
+            else running.Dispose();
+            Shutdown();
+            return;
+        }
+        OpenUpdatesPage = e.Args.Any(a => a.StartsWith(BackgroundCheck.Protocol + ":", StringComparison.OrdinalIgnoreCase));
+
         // Instance élevée chargée seulement de déplacer des fichiers du bureau Public
         // Instances élevées (administrateur) lancées pour une action précise
         if (e.Args.Length >= 2 && e.Args[0].StartsWith("--"))
@@ -16,6 +35,7 @@ public partial class App : Application
             try
             {
                 Settings.Load();
+                Settings.ReadOnly = true;   // l'instance principale reste seule à écrire la configuration
                 switch (e.Args[0])
                 {
                     case "--move": DesktopManager.RunElevatedMoves(e.Args[1]); break;
@@ -23,7 +43,7 @@ public partial class App : Application
                     case "--arrows": IconStyler.RunElevatedArrows(e.Args[1], e.Args.Length > 2 ? e.Args[2] : ""); break;
                 }
             }
-            catch { code = 1; }
+            catch (Exception ex) { code = 1; Log.Error("Action administrateur " + e.Args[0], ex); }
             Shutdown(code);
             return;
         }
@@ -52,22 +72,37 @@ public partial class App : Application
         else _instance = new Mutex(true, @"Local\CentrePC_Instance", out first);
         if (!first)
         {
-            try { EventWaitHandle.OpenExisting(@"Local\CentrePC_Afficher").Set(); } catch { }
+            try { EventWaitHandle.OpenExisting(OpenUpdatesPage ? @"Local\CentrePC_MisesAJour" : @"Local\CentrePC_Afficher").Set(); } catch { }
             Shutdown();
             return;
         }
         _showSignal = new EventWaitHandle(false, EventResetMode.AutoReset, @"Local\CentrePC_Afficher");
+        _updatesSignal = new EventWaitHandle(false, EventResetMode.AutoReset, @"Local\CentrePC_MisesAJour");
         new Thread(() =>
         {
-            while (_showSignal.WaitOne())
-                Dispatcher.Invoke(BringToFront);
+            var handles = new WaitHandle[] { _showSignal, _updatesSignal };
+            while (true)
+            {
+                int i = WaitHandle.WaitAny(handles);
+                Dispatcher.Invoke(() =>
+                {
+                    BringToFront();
+                    if (i == 1) (MainWindow as global::CentrePC.MainWindow)?.ShowUpdatesPage();
+                });
+            }
         }) { IsBackground = true }.Start();
 
         if (!Native.IsPackaged) AppUpdater.CleanupOld();
         DispatcherUnhandledException += OnError;
+        AppDomain.CurrentDomain.UnhandledException += (_, a) => Log.Crash("Erreur non gérée", a.ExceptionObject as Exception);
+        TaskScheduler.UnobservedTaskException += (_, a) => { Log.Error("Tâche en arrière-plan", a.Exception); a.SetObserved(); };
+        AppDomain.CurrentDomain.ProcessExit += (_, _) => Settings.Flush();
         base.OnStartup(e);
         Settings.Load();
-        new MainWindow().Show();
+        var main = new MainWindow();
+        // Ouverture de session : Centre PC démarre discrètement, seulement l'icône près de l'horloge
+        if (e.Args.Contains("--tray") && Settings.Current.QuickAccess) main.StartInBackground();
+        else main.Show();
     }
 
     private static Mutex _instance;
@@ -79,7 +114,7 @@ public partial class App : Application
         try { _instance?.Dispose(); } catch { }
         _instance = null;
     }
-    private static EventWaitHandle _showSignal;
+    private static EventWaitHandle _showSignal, _updatesSignal;
 
     private void BringToFront()
     {
@@ -95,18 +130,15 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        Settings.Flush();
         try { _instance?.ReleaseMutex(); } catch { }
         base.OnExit(e);
     }
 
     private void OnError(object sender, DispatcherUnhandledExceptionEventArgs e)
     {
-        try
-        {
-            File.AppendAllText(Path.Combine(Settings.DataDir, "erreurs.log"), $"{DateTime.Now:G}\n{e.Exception}\n\n");
-        }
-        catch { }
-        MessageBox.Show("Oups, une erreur est survenue :\n\n" + e.Exception.Message, "Centre PC", MessageBoxButton.OK, MessageBoxImage.Warning);
+        Log.Crash("Erreur dans l'interface", e.Exception);
+        MessageBox.Show("Une erreur est survenue :\n\n" + e.Exception.Message, "Centre PC", MessageBoxButton.OK, MessageBoxImage.Warning);
         e.Handled = true;
     }
 }

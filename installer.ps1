@@ -26,12 +26,20 @@ Get-Process CentrePC -ErrorAction SilentlyContinue | Wait-Process -Timeout 10 -E
 $copie = $false
 for ($i = 0; $i -lt 15 -and -not $copie; $i++) {
     # Centre PC peut mettre une seconde à se fermer : on réessaie sans afficher d'erreur
-    Copy-Item publish\CentrePC.exe $dest -Force -ErrorAction SilentlyContinue
+    # (try/catch obligatoire : avec $ErrorActionPreference = 'Stop', PowerShell 5.1 arrête le script
+    #  sur « fichier en cours d'utilisation » malgré -ErrorAction SilentlyContinue)
+    try { Copy-Item publish\CentrePC.exe $dest -Force -ErrorAction Stop } catch { }
+    if ($i -eq 5) { Get-Process CentrePC -ErrorAction SilentlyContinue | ForEach-Object { try { $_.Kill() } catch { } } }
     if ((Get-Item $dest\CentrePC.exe -ErrorAction SilentlyContinue).Length -eq (Get-Item publish\CentrePC.exe).Length -and
         (Get-Item $dest\CentrePC.exe).LastWriteTime -eq (Get-Item publish\CentrePC.exe).LastWriteTime) { $copie = $true }
     else { Start-Sleep -Milliseconds 700 }
 }
-if (-not $copie) { Write-Host "Ferme Centre PC puis relance Compiler.bat." -ForegroundColor Red; Stop-Transcript | Out-Null; exit 1 }
+if (-not $copie) {
+    if (Get-Process CentrePC -ErrorAction SilentlyContinue) {
+        Write-Host "Centre PC est encore ouvert (peut-être en administrateur, pendant une mise à jour) : ferme-le puis relance Compiler.bat." -ForegroundColor Red
+    } else { Write-Host "Impossible de remplacer CentrePC.exe (antivirus en cours d'analyse ?) : relance Compiler.bat dans quelques secondes." -ForegroundColor Red }
+    Stop-Transcript | Out-Null; exit 1
+}
 
 $wsh = New-Object -ComObject WScript.Shell
 foreach ($dir in @([Environment]::GetFolderPath('Desktop'), [Environment]::GetFolderPath('Programs'))) {

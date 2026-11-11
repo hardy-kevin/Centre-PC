@@ -108,7 +108,7 @@ public static class AppUpdater
 
     public static bool IsNewer(ReleaseInfo r) => r != null && r.Version > Current;
 
-    /// <summary>Télécharge, vérifie et installe la nouvelle version, puis la lance. L'appli actuelle doit ensuite se fermer.</summary>
+    /// <summary>Télécharge, vérifie et installe la nouvelle version, puis la lance. L'application actuelle doit ensuite se fermer.</summary>
     public static async Task InstallAsync(ReleaseInfo r, IProgress<double> progress)
     {
         var exe = Environment.ProcessPath;
@@ -142,7 +142,7 @@ public static class AppUpdater
             if (!actual.Equals(expected, StringComparison.OrdinalIgnoreCase))
             {
                 File.Delete(tmp);
-                throw new InvalidDataException("Le fichier téléchargé est incomplet ou abîmé. Réessaie plus tard.");
+                throw new InvalidDataException("Le fichier téléchargé est incomplet ou endommagé. Veuillez réessayer ultérieurement.");
             }
         }
 

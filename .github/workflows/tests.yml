@@ -1,0 +1,25 @@
+# Vérifie Centre PC à chaque envoi sur GitHub : compilation de l'appli + tests automatiques.
+# En cas d'échec, GitHub envoie un e-mail et la croix rouge apparaît sur le dépôt (onglet « Actions »).
+name: Tests
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  tests:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Compiler l'appli
+        run: dotnet build CentrePC.csproj -c Release --nologo
+
+      - name: Tests automatiques
+        run: dotnet test Tests/CentrePC.Tests/CentrePC.Tests.csproj -c Release --nologo --logger "console;verbosity=normal"

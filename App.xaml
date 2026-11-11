@@ -202,6 +202,34 @@
         </Style>
 
         <!-- ===================== Navigation ===================== -->
+        <!-- Action de la barre de gauche (même apparence qu'une entrée de menu, sans sélection) -->
+        <Style x:Key="NavAction" TargetType="Button">
+            <Setter Property="Foreground" Value="{StaticResource Text2}"/>
+            <Setter Property="FontSize" Value="14.5"/>
+            <Setter Property="Height" Value="46"/>
+            <Setter Property="Margin" Value="0,0,0,4"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid>
+                            <Border x:Name="b" CornerRadius="10" Background="Transparent"/>
+                            <ContentPresenter Margin="16,0" VerticalAlignment="Center" HorizontalAlignment="Left"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="#14FFFFFF"/>
+                                <Setter Property="Foreground" Value="{StaticResource Text}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="#1FFFFFFF"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
         <Style x:Key="NavButton" TargetType="RadioButton">
             <Setter Property="Foreground" Value="{StaticResource Text2}"/>
             <Setter Property="FontSize" Value="14.5"/>
@@ -311,6 +339,13 @@
                             <Trigger Property="IsChecked" Value="True">
                                 <Setter TargetName="box" Property="Background" Value="{StaticResource Accent}"/>
                                 <Setter TargetName="box" Property="BorderBrush" Value="{StaticResource Accent}"/>
+                                <Setter TargetName="tick" Property="Visibility" Value="Visible"/>
+                            </Trigger>
+                            <!-- Coché en partie (dossier dont certains éléments sont décochés) -->
+                            <Trigger Property="IsChecked" Value="{x:Null}">
+                                <Setter TargetName="box" Property="Background" Value="{StaticResource Accent}"/>
+                                <Setter TargetName="box" Property="BorderBrush" Value="{StaticResource Accent}"/>
+                                <Setter TargetName="tick" Property="Text" Value="&#xE738;"/>
                                 <Setter TargetName="tick" Property="Visibility" Value="Visible"/>
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">

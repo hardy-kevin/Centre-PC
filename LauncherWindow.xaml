@@ -1,0 +1,42 @@
+<Window x:Class="CentrePC.LauncherWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Centre PC" Width="680" Height="580" WindowStyle="None" ResizeMode="NoResize" ShowInTaskbar="False"
+        Topmost="True" AllowsTransparency="True" Background="Transparent" WindowStartupLocation="Manual"
+        FontFamily="{StaticResource UiFont}" Foreground="{StaticResource Text}">
+    <!-- Lanceur rapide : on tape, l'application s'ouvre, le lanceur disparaît -->
+    <Border Background="{StaticResource Surface}" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="16" Margin="14">
+        <Border.Effect><DropShadowEffect BlurRadius="26" ShadowDepth="4" Opacity="0.55"/></Border.Effect>
+        <Grid Margin="16,16,16,12">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <TextBox x:Name="Query" Style="{StaticResource SearchBox}" Tag="Rechercher une application…"
+                     TextChanged="Query_TextChanged" PreviewKeyDown="Query_KeyDown"/>
+            <ScrollViewer x:Name="Scroll" Grid.Row="1" Margin="0,12,0,0" VerticalScrollBarVisibility="Auto">
+                <StackPanel x:Name="Host"/>
+            </ScrollViewer>
+            <Grid Grid.Row="2" Margin="2,10,0,0">
+                <TextBlock x:Name="Hint" Style="{StaticResource Subtle}" FontSize="11.5" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,330,0"/>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button x:Name="CaptureButton" Style="{StaticResource BaseButton}" Click="Capture_Click" Padding="12,6" Margin="0,0,8,0"
+                            ToolTip="Clic : capturer une zone de l'écran · clic droit : écran entier, retardateur, dossier des captures">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE722;" Style="{StaticResource Glyph}" FontSize="12"/>
+                            <TextBlock Text="Capture d'écran" Margin="8,0,0,0"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Style="{StaticResource BaseButton}" Click="OpenMain_Click" Padding="12,6"
+                            ToolTip="Bureau, documents, mises à jour et réglages">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE8A7;" Style="{StaticResource Glyph}" FontSize="12"/>
+                            <TextBlock Text="Ouvrir Centre PC" Margin="8,0,0,0"/>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Grid>
+    </Border>
+</Window>

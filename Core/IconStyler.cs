@@ -188,7 +188,16 @@ public static class IconStyler
     public static void RunElevatedIconOps(string jsonPath)
     {
         var ops = JsonSerializer.Deserialize<List<IconOp>>(File.ReadAllText(jsonPath));
-        foreach (var op in ops) { try { Shortcuts.SetIconLocation(op.Path, op.IconLocation); } catch { } }
+        foreach (var op in ops)
+        {
+            // Le fichier d'instructions est modifiable sans droits : seuls les raccourcis des bureaux sont acceptés
+            if (!Elevated.IsAllowedLocation(op.Path) || !op.Path.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase))
+            {
+                Log.Info($"Action administrateur refusée (icône) : {op.Path}");
+                continue;
+            }
+            try { Shortcuts.SetIconLocation(op.Path, op.IconLocation); } catch (Exception ex) { Log.Error("Icône " + op.Path, ex); }
+        }
     }
 
     // ------------------------------------------------------------------ .url
@@ -289,7 +298,7 @@ public static class IconStyler
             }
             catch { }
             Settings.Save();
-            var blank = System.IO.Path.Combine(Settings.DataDir, "vide.ico");
+            var blank = BlankIcon;
             Native.RunSta(() => { WriteIco(blank, new[] { 48, 32, 16 }.Select(Transparent).ToList()); return 0; }).Wait();
             arg = $"--arrows hide \"{blank}\"";
         }
@@ -300,9 +309,52 @@ public static class IconStyler
         return true;
     }
 
+    /// <summary>
+    /// Icône vide qui remplace la flèche. Windows garde en cache l'image d'une icône d'après son chemin :
+    /// changer de nom de fichier est le seul moyen sûr de lui faire relire une icône corrigée.
+    /// </summary>
+    private static string BlankIcon => System.IO.Path.Combine(Settings.DataDir, "fleche-vide-2.ico");
+
+    private static string ArrowValue()
+    {
+        try { using var k = Registry.LocalMachine.OpenSubKey(ShellIconsKey); return k?.GetValue("29") as string; }
+        catch { return null; }
+    }
+
+    /// <summary>Les flèches sont masquées par Centre PC avec l'ancienne icône (carrés noirs) ?</summary>
+    public static bool NeedsArrowRepair()
+    {
+        var v = ArrowValue();
+        if (v == null || !v.Contains("CentrePC", StringComparison.OrdinalIgnoreCase)) return false;
+        var file = v.Split(',')[0].Trim().Trim('"');
+        if (file.Equals(BlankIcon, StringComparison.OrdinalIgnoreCase) && File.Exists(file) && !HasSmallPng(file)) return false;
+        var last = Settings.Current.ArrowRepairAsked;
+        return last == null || DateTime.Now - last > TimeSpan.FromDays(1);   // refusé : redemandé au plus une fois par jour
+    }
+
+    /// <summary>
+    /// Répare les carrés noirs (versions ≤ 1.2.1) : nouvelle icône vide au bon format, sous un nouveau nom,
+    /// enregistrée en administrateur (une demande d'autorisation), puis cache d'icônes vidé.
+    /// </summary>
+    public static bool RepairArrowOverlay()
+    {
+        if (!NeedsArrowRepair()) return false;
+        var old = (ArrowValue() ?? "").Split(',')[0].Trim().Trim('"');
+        Settings.Current.ArrowRepairAsked = DateTime.Now;
+        Settings.Save();
+        var blank = BlankIcon;
+        Native.RunSta(() => { WriteIco(blank, new[] { 48, 32, 16 }.Select(Transparent).ToList()); return 0; }).Wait();
+        if (!Elevated.Run($"--arrows hide \"{blank}\"")) return false;   // autorisation refusée
+        try { if (!old.Equals(blank, StringComparison.OrdinalIgnoreCase) && File.Exists(old)) File.Delete(old); } catch { }
+        ResetIconCache();
+        return true;
+    }
+
     /// <summary>Appelé par l'instance élevée.</summary>
     public static void RunElevatedArrows(string mode, string value)
     {
+        // Seule une icône .ico peut remplacer la flèche (la restauration reprend la valeur d'origine sauvegardée)
+        if (mode == "hide" && (!value.EndsWith(".ico", StringComparison.OrdinalIgnoreCase) || !File.Exists(value))) return;
         using var k = Registry.LocalMachine.CreateSubKey(ShellIconsKey);
         if (mode == "hide") k.SetValue("29", value + ",0", RegistryValueKind.String);
         else if (string.IsNullOrEmpty(value)) k.DeleteValue("29", false);
@@ -504,17 +556,15 @@ public static class IconStyler
         return Native.ExtractIcon(file, idx, 256) ?? Native.GetIcon(file, 256);
     }
 
-    // ------------------------------------------------------------------ Fichier .ico (images PNG)
+    // ------------------------------------------------------------------ Fichier .ico
+    /// <summary>
+    /// Écrit un .ico : PNG pour 256 px, image BMP 32 bits + masque pour les petites tailles.
+    /// Windows dessine les superpositions (flèche de raccourci) et ses listes d'icônes avec le masque :
+    /// une petite taille en PNG y apparaît comme un carré noir.
+    /// </summary>
     public static void WriteIco(string path, IList<BitmapSource> images)
     {
-        var pngs = images.Select(img =>
-        {
-            var enc = new PngBitmapEncoder();
-            enc.Frames.Add(BitmapFrame.Create(img));
-            using var ms = new MemoryStream();
-            enc.Save(ms);
-            return ms.ToArray();
-        }).ToList();
+        var data = images.Select(img => img.PixelWidth >= 256 ? Png(img) : Dib(img)).ToList();
         using var fs = File.Create(path);
         using var w = new BinaryWriter(fs);
         w.Write((short)0); w.Write((short)1); w.Write((short)images.Count);
@@ -525,10 +575,114 @@ public static class IconStyler
             w.Write((byte)(sz >= 256 ? 0 : sz)); w.Write((byte)(sz >= 256 ? 0 : sz));
             w.Write((byte)0); w.Write((byte)0);
             w.Write((short)1); w.Write((short)32);
-            w.Write(pngs[i].Length); w.Write(offset);
-            offset += pngs[i].Length;
+            w.Write(data[i].Length); w.Write(offset);
+            offset += data[i].Length;
         }
-        foreach (var p in pngs) w.Write(p);
+        foreach (var d in data) w.Write(d);
+    }
+
+    private static byte[] Png(BitmapSource img)
+    {
+        var enc = new PngBitmapEncoder();
+        enc.Frames.Add(BitmapFrame.Create(img));
+        using var ms = new MemoryStream();
+        enc.Save(ms);
+        return ms.ToArray();
+    }
+
+    /// <summary>Image d'icône « classique » : en-tête BITMAPINFOHEADER, pixels BGRA de bas en haut, masque 1 bit.</summary>
+    private static byte[] Dib(BitmapSource img)
+    {
+        var src = img.Format == PixelFormats.Bgra32 ? img : new FormatConvertedBitmap(img, PixelFormats.Bgra32, null, 0);
+        int wd = src.PixelWidth, ht = src.PixelHeight, stride = wd * 4;
+        var px = new byte[stride * ht];
+        src.CopyPixels(px, stride, 0);
+        int maskStride = ((wd + 31) / 32) * 4;
+        var mask = new byte[maskStride * ht];
+        using var ms = new MemoryStream();
+        using var w = new BinaryWriter(ms);
+        w.Write(40); w.Write(wd); w.Write(ht * 2);          // hauteur doublée : image + masque
+        w.Write((short)1); w.Write((short)32);
+        w.Write(0); w.Write(stride * ht + mask.Length); w.Write(0); w.Write(0); w.Write(0); w.Write(0);
+        for (int y = ht - 1; y >= 0; y--) w.Write(px, y * stride, stride);
+        for (int y = 0; y < ht; y++)
+            for (int x = 0; x < wd; x++)
+                if (px[y * stride + x * 4 + 3] == 0)                 // pixel transparent → bit du masque à 1
+                    mask[(ht - 1 - y) * maskStride + x / 8] |= (byte)(0x80 >> (x % 8));
+        w.Write(mask);
+        return ms.ToArray();
+    }
+
+    /// <summary>Le fichier .ico contient-il une petite image en PNG (ancien format de Centre PC) ?</summary>
+    internal static bool HasSmallPng(string ico)
+    {
+        try
+        {
+            var d = File.ReadAllBytes(ico);
+            int n = BitConverter.ToInt16(d, 4);
+            for (int i = 0; i < n; i++)
+            {
+                int e = 6 + 16 * i, size = d[e] == 0 ? 256 : d[e], off = BitConverter.ToInt32(d, e + 12);
+                if (size < 256 && off + 4 <= d.Length && d[off] == 0x89 && d[off + 1] == 0x50) return true;
+            }
+        }
+        catch { }
+        return false;
+    }
+
+    /// <summary>
+    /// Réparation (versions ≤ 1.2.1) : tuiles colorées enregistrées en PNG pour les petites tailles, réécrites au bon
+    /// format, puis cache d'icônes vidé. Sans droits administrateur. Renvoie vrai si une réparation a eu lieu.
+    /// </summary>
+    public static bool RepairIconFormats()
+    {
+        bool repaired = false;
+        try
+        {
+            if (Directory.Exists(IconsDir))
+                foreach (var ico in Directory.GetFiles(IconsDir, "*.ico").Where(HasSmallPng))
+                {
+                    try
+                    {
+                        var frames = Native.RunSta(() =>
+                        {
+                            var dec = new IconBitmapDecoder(new Uri(ico), BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
+                            return dec.Frames.Select(f => (BitmapSource)f).ToList();
+                        }).Result;
+                        Native.RunSta(() => { WriteIco(ico, frames); return 0; }).Wait();
+                        repaired = true;
+                    }
+                    catch { }
+                }
+        }
+        catch { }
+        if (repaired) ResetIconCache();
+        return repaired;
+    }
+
+    /// <summary>Vide le cache d'icônes de l'Explorateur (sinon les anciennes images restent affichées).</summary>
+    public static void ResetIconCache()
+    {
+        try
+        {
+            // Outil de Windows qui rafraîchit le cache d'icônes sans rien supprimer
+            try { Process.Start(new ProcessStartInfo("ie4uinit.exe", "-show") { UseShellExecute = false, CreateNoWindow = true })?.WaitForExit(5000); } catch { }
+            foreach (var p in Process.GetProcessesByName("explorer")) { try { p.Kill(); } catch { } }
+            var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            var dir = System.IO.Path.Combine(local, @"Microsoft\Windows\Explorer");
+            // Les fichiers se libèrent quand l'Explorateur est fermé (d'autres applis peuvent les garder ouverts : on insiste un peu)
+            for (int i = 0; i < 8; i++)
+            {
+                Thread.Sleep(400);
+                var files = (Directory.Exists(dir) ? Directory.GetFiles(dir, "iconcache_*.db") : Array.Empty<string>())
+                    .Append(System.IO.Path.Combine(local, "IconCache.db")).Where(File.Exists).ToList();
+                foreach (var f in files) { try { File.Delete(f); } catch { } }
+                if (!files.Any(File.Exists)) break;
+            }
+            if (Process.GetProcessesByName("explorer").Length == 0)
+                Process.Start(new ProcessStartInfo("explorer.exe") { UseShellExecute = true });
+        }
+        catch { }
     }
 
     /// <summary>Supprime les icônes générées qui ne servent plus.</summary>
@@ -621,8 +775,33 @@ public static class Ini
 /// <summary>Relance Centre PC en administrateur pour une action précise.</summary>
 public static class Elevated
 {
+    /// <summary>
+    /// Emplacements où une instance administrateur a le droit de déplacer ou modifier des fichiers :
+    /// bureaux (de tout compte, et bureau Public) et dossiers de Centre PC. Tout le reste est refusé,
+    /// pour qu'un fichier d'instructions modifié par un autre programme ne puisse pas toucher au système.
+    /// </summary>
+    public static bool IsAllowedLocation(string path)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(path) || path.Contains("..")) return false;
+            var full = Path.GetFullPath(path);
+            var pub = Environment.GetFolderPath(Environment.SpecialFolder.CommonDesktopDirectory);
+            if (!string.IsNullOrEmpty(pub) && full.StartsWith(pub.TrimEnd('\\') + "\\", StringComparison.OrdinalIgnoreCase)) return true;
+            var users = Path.GetDirectoryName(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+            if (string.IsNullOrEmpty(users) || !full.StartsWith(users.TrimEnd('\\') + "\\", StringComparison.OrdinalIgnoreCase)) return false;
+            // C:\Users\<compte>\… : bureau (OneDrive compris) ou dossiers de Centre PC
+            return full.Contains("\\Desktop\\", StringComparison.OrdinalIgnoreCase)
+                || full.Contains("\\Bureau\\", StringComparison.OrdinalIgnoreCase)
+                || full.Contains("\\AppData\\Local\\CentrePC\\", StringComparison.OrdinalIgnoreCase)
+                || full.Contains("\\Documents\\Centre PC\\", StringComparison.OrdinalIgnoreCase);
+        }
+        catch { return false; }
+    }
+
     public static bool Run(string args)
     {
+        Settings.Flush();   // l'instance administrateur relit la configuration sur le disque
         try
         {
             var p = Process.Start(new ProcessStartInfo(Environment.ProcessPath, args) { UseShellExecute = true, Verb = "runas" });

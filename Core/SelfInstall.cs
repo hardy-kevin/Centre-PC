@@ -19,7 +19,7 @@ public static class SelfInstall
     public static bool IsInstalledCopy =>
         string.Equals(Path.GetFullPath(Environment.ProcessPath ?? ""), Path.GetFullPath(InstalledExe), StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>À appeler au démarrage. Renvoie false si l'appli doit s'arrêter (installation faite, nouvelle copie lancée).</summary>
+    /// <summary>À appeler au démarrage. Renvoie false si l'application doit s'arrêter (installation faite, nouvelle copie lancée).</summary>
     public static bool HandleStartup(string[] args)
     {
         if (Native.IsPackaged) return true;   // version Store : installée et désinstallée par le Store
@@ -89,10 +89,10 @@ public static class SelfInstall
         catch { }
     }
 
-    /// <summary>Désinstallation : remet le bureau, les icônes et les flèches comme avant, puis supprime l'appli.</summary>
+    /// <summary>Désinstallation : remet le bureau, les icônes et les flèches comme avant, puis supprime l'application.</summary>
     public static void Uninstall()
     {
-        if (MessageBox.Show("Désinstaller Centre PC ?\n\nTes icônes rangées seront remises sur le bureau et les icônes d'origine restaurées.",
+        if (MessageBox.Show("Désinstaller Centre PC ?\n\nLes icônes rangées seront remises sur le bureau et les icônes d'origine restaurées.",
                 "Centre PC", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
 
         Settings.Load();
@@ -108,13 +108,20 @@ public static class SelfInstall
         }
         catch { }
 
+        // Vérification quotidienne et notifications
+        BackgroundCheck.Remove();
+        // Raccourcis libérés dans d'autres applications : réglages d'origine remis
+        try { HotkeyConflicts.RestoreAll(); } catch { }
+        // Démarrage à l'ouverture de session (accès rapide)
+        try { using var run = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", true); run?.DeleteValue("CentrePC", false); } catch { }
+
         // 3) Raccourcis et entrée « Applications installées »
         foreach (var dir in new[] { Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
                                     Environment.GetFolderPath(Environment.SpecialFolder.Programs) })
             try { File.Delete(Path.Combine(dir, "Centre PC.lnk")); } catch { }
         try { Registry.CurrentUser.DeleteSubKeyTree(UninstallKey, false); } catch { }
 
-        bool keepData = MessageBox.Show("Garder tes réglages (thèmes personnalisés, favoris) au cas où tu réinstalles Centre PC ?",
+        bool keepData = MessageBox.Show("Conserver vos réglages (catégories personnalisées, favoris) en vue d'une réinstallation de Centre PC ?",
             "Centre PC", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
 
         // Sécurité : si des éléments n'ont pas pu revenir sur le bureau, on ne supprime pas le dossier de rangement
@@ -126,7 +133,7 @@ public static class SelfInstall
                 ? $"\n\nCertains éléments n'ont pas pu revenir sur le bureau : ils sont conservés dans\n{Settings.StoreDir}"
                 : ""), "Centre PC", MessageBoxButton.OK, MessageBoxImage.Information);
 
-        // 4) Suppression des fichiers une fois l'appli fermée
+        // 4) Suppression des fichiers une fois l'application fermée
         var cmd = $"/c timeout /t 3 /nobreak >nul & rmdir /s /q \"{InstallDir}\"";
         if (!keepData) cmd += $" & rmdir /s /q \"{Settings.DataDir}\"";
         Process.Start(new ProcessStartInfo("cmd.exe", cmd) { CreateNoWindow = true, UseShellExecute = false, WindowStyle = ProcessWindowStyle.Hidden });

@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Tests automatiques de Centre PC (lancés par GitHub à chaque envoi, ou à la main : dotnet test Tests\CentrePC.Tests).
+    Le code de Core\ est compilé directement ici (l'appli est un exe autonome, qu'un projet de tests ne peut pas référencer).
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>CentrePC.Tests</RootNamespace>
+    <NoWarn>$(NoWarn);CS0618;CA1416</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\Core\**\*.cs" Link="Core\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="..\..\GlobalUsings.cs" Link="GlobalUsings.cs" />
+    <EmbeddedResource Include="..\..\Scripts\maj.ps1" LogicalName="maj.ps1" Link="maj.ps1" />
+    <None Include="..\..\Scripts\maj.ps1" Link="Scripts\maj.ps1" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <PackageReference Include="System.Management" Version="8.0.0" />
+  </ItemGroup>
+</Project>
