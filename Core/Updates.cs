@@ -652,6 +652,29 @@ public static class Updates
         return Convert.ToBase64String(Encoding.Unicode.GetBytes(boot));
     }
 
+    /// <summary>
+    /// Lance en administrateur un script PowerShell écrit dans un dossier modifiable sans droits, sans risque de substitution :
+    /// la commande élevée contient l'empreinte SHA-256 du script, le relit une seule fois, refuse de l'exécuter s'il a changé
+    /// (code 99), puis l'exécute avec les paramètres donnés (passés dans la commande, donc non modifiables eux non plus).
+    /// </summary>
+    public static Process StartVerifiedElevated(string scriptPath, string scriptText, params (string name, string value)[] args)
+    {
+        static string Q(string s) => "'" + (s ?? "").Replace("'", "''") + "'";
+        File.WriteAllText(scriptPath, scriptText, new UTF8Encoding(true));
+        var sha = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(scriptText.TrimStart('\uFEFF')))).ToLowerInvariant();
+        var boot =
+            "$ErrorActionPreference='Stop';" +
+            $"$s=[IO.File]::ReadAllText({Q(scriptPath)});" +
+            "$h=-join ([Security.Cryptography.SHA256]::Create().ComputeHash([Text.Encoding]::UTF8.GetBytes($s)) | ForEach-Object { $_.ToString('x2') });" +
+            $"if ($h -ne '{sha}') {{ exit 99 }};" +
+            "& ([scriptblock]::Create($s)) " + string.Join(" ", args.Select(a => $"-{a.name} {Q(a.value)}"));
+        var encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(boot));
+        return Process.Start(new ProcessStartInfo("powershell.exe", $"-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -EncodedCommand {encoded}")
+        {
+            UseShellExecute = true, Verb = "runas", WindowStyle = ProcessWindowStyle.Hidden
+        });
+    }
+
     // ------------------------------------------------------------------ utilitaires
     /// <summary>Lance un programme et renvoie sa sortie, ses erreurs et son code de fin, séparément.</summary>
     public static async Task<(string stdout, string stderr, int code)> RunAsync(string exe, string args)

@@ -165,9 +165,13 @@ public sealed class MachineSnapshot
             double change = (value / before - 1) * 100;
             if (Math.Abs(change) < 3 && !name.Contains("°C")) continue;
             Row($"Mesure : {name}", before.ToString("0.##"), $"{value:0.##} ({change:+0;-0} %)");
-            bool higherIsWorse = name.Contains("°C") || name.Contains("ms");
-            if ((!higherIsWorse && change <= -10) || (higherIsWorse && name.Contains("°C") && value - before >= 8))
-                perfDrops.Add(name.Contains("°C") ? $"{name} : {before:0} → {value:0} °C" : $"{name} : {change:0} %");
+            // Sens de lecture : températures et compteurs d'incidents doivent baisser ; débits et scores doivent monter.
+            // Le débit Internet et les accès 4K varient trop d'une mesure à l'autre pour déclencher une alerte.
+            bool lowerIsBetter = name.Contains("°C") || name.Contains("erreurs") || name.Contains("(30 j)");
+            bool noisy = name.Contains("Internet") || name.Contains("4K");
+            if (noisy) continue;
+            if (lowerIsBetter ? (name.Contains("°C") ? value - before >= 8 : value > before) : change <= -15)
+                perfDrops.Add(name.Contains("°C") ? $"{name} : {before:0} → {value:0}" : $"{name} : {before:0.##} → {value:0.##} ({change:+0;-0} %)");
         }
         report.Tables.Add(($"Changements depuis le bilan du {old.Date:d MMMM yyyy} ({days} jour(s))", new[] { "Élément", "Avant", "Maintenant" }, rows));
 
@@ -183,7 +187,7 @@ public sealed class MachineSnapshot
             summary.Count == 0 ? $"Aucun changement d'installation depuis le bilan du {old.Date:d MMMM yyyy}." : $"Depuis le bilan du {old.Date:d MMMM yyyy} : {string.Join(", ", summary)}.",
             $"{rows.Count} différence(s) détaillée(s) dans l'annexe. Instantané précédent : niveau {old.Level}, verdict « {old.Verdict} ».");
         if (perfDrops.Count > 0)
-            report.Add(DeviceStatus.Warning, "Évolution", "Les performances ou les températures se sont dégradées depuis le dernier bilan.",
+            report.Add(DeviceStatus.Warning, "Évolution", $"En baisse depuis le bilan du {old.Date:d MMMM} : {string.Join(" ; ", perfDrops.Take(3))}" + (perfDrops.Count > 3 ? "…" : "."),
                 string.Join(" · ", perfDrops),
                 summary.Count > 0 ? "Un des changements ci-dessus (pilote, mise à jour, BIOS) peut en être la cause ; sinon : poussière, pâte thermique, mode d'alimentation." : "Nettoyez la poussière et vérifiez le mode d'alimentation.");
         // Constats apparus depuis

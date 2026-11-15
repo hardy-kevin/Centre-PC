@@ -134,7 +134,11 @@ public static class AppUpdater
         }
 
         // 2) Vérification de l'empreinte (protège contre un fichier abîmé ou modifié)
-        if (r.ShaUrl != null)
+        if (r.ShaUrl == null)
+        {
+            File.Delete(tmp);
+            throw new InvalidDataException("Cette version ne fournit pas d'empreinte de vérification : elle n'est pas installée automatiquement. Téléchargez-la depuis la page des versions.");
+        }
         {
             var expected = (await Http.GetStringAsync(r.ShaUrl)).Trim().Split(' ', '\t', '\r', '\n')[0];
             string actual;

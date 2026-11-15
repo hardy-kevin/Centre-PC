@@ -301,8 +301,6 @@ public static partial class DeviceHealth
                     Actions = { new DeviceAction { Label = "Réactiver le son", Glyph = "\uE767", Primary = true,
                                                    Run = () => Task.Run(() => CoreAudio.Unmute(render: true) ? "Son réactivé." : "Impossible de modifier le volume.") } }
                 });
-            c.Actions.Add(new DeviceAction { Label = "Tester le son", Glyph = "\uE768", Tip = "Joue le son « information » de Windows",
-                                             Run = () => Task.FromResult(MessageBeep(0x40) ? $"Un son a été joué sur {output.Name}. Rien entendu ? Vérifiez le volume du casque ou des enceintes." : null) });
         }
         if (input == null) c.Lines.Add("Micro : aucun");
         else

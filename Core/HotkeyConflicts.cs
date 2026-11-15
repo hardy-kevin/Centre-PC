@@ -333,7 +333,9 @@ public static class HotkeyConflicts
                     State = HotkeyState.Blocked, Owners = owners,
                     Text = $"Utilisé par {apps} · à changer {manual[0].Where} si vous voulez ce raccourci"
                 };
-            return new HotkeyCheck { State = HotkeyState.Freeable, Owners = owners, Text = $"Utilisé par {apps} · peut être libéré (réversible)" };
+            // Centre PC ne modifie plus les réglages d'un autre logiciel : il dit qui utilise le raccourci et où le changer
+            var where = owners.Select(o => o.Where).FirstOrDefault(w => !string.IsNullOrWhiteSpace(w)) ?? $"dans les réglages de {apps}";
+            return new HotkeyCheck { State = HotkeyState.Blocked, Owners = owners, Text = $"Utilisé par {apps} · à changer {where} si vous voulez ce raccourci" };
         }
 
         var known = KnownDefaultOwner(k, installedNames);

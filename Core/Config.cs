@@ -72,6 +72,10 @@ public class Config
     public List<BenchResult> BenchHistory { get; set; } = new();
     /// <summary>Démarrer à l'ouverture de session, sans fenêtre (seulement l'icône près de l'horloge).</summary>
     public bool StartWithWindows { get; set; }
+    /// <summary>Démarrage avec Windows déjà proposé (annonce montrée une seule fois aux utilisateurs de l'accès rapide).</summary>
+    public bool StartupAsked { get; set; }
+    /// <summary>L'utilisateur a accepté la licence de HWiNFO (logiciel tiers installé le temps des tests).</summary>
+    public bool HwinfoAccepted { get; set; }
     public bool TrayHintShown { get; set; }
     /// <summary>Applications lancées récemment (les plus récentes d'abord).</summary>
     public List<string> RecentApps { get; set; } = new();

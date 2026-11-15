@@ -430,6 +430,12 @@ public partial class MainWindow
     }
 
     private void OpenRepo_Click(object sender, RoutedEventArgs e) => Updates.Open(AppUpdater.RepoUrl);
+
+    // Textes de référence, publiés avec le code source (toujours à jour, lisibles sans Centre PC)
+    private static string DocUrl(string file) => AppUpdater.RepoUrl.Replace("/releases", "/blob/HEAD/" + file);
+    private void Terms_Click(object sender, RoutedEventArgs e) => Updates.Open(DocUrl("CONDITIONS.md"));
+    private void Privacy_Click(object sender, RoutedEventArgs e) => Updates.Open(DocUrl("CONFIDENTIALITE.md"));
+    private void ProNotice_Click(object sender, RoutedEventArgs e) => Updates.Open(DocUrl("USAGE-PROFESSIONNEL.md"));
     private void Footer_Click(object sender, MouseButtonEventArgs e) => NavSettings.IsChecked = true;
 
     private void OpenDataDir_Click(object sender, RoutedEventArgs e) => Updates.Open(Settings.DataDir);

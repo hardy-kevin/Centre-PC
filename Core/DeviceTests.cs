@@ -6,8 +6,7 @@ namespace CentrePC.Core;
 
 /// <summary>
 /// Moteurs des outils de test : sons générés (haut-parleurs gauche / droite), capture du micro (niveau en direct,
-/// enregistrement et réécoute), manettes Xbox (XInput : boutons, sticks, gâchettes, vibrations), vitesse du disque
-/// (lecture / écriture sans cache) et vitesse d'Internet. Rien n'est envoyé ni conservé.
+/// enregistrement et réécoute), manettes Xbox (XInput : boutons, sticks, gâchettes, vibrations), vitesse d'Internet. Rien n'est envoyé ni conservé.
 /// </summary>
 public static class DeviceTests
 {
@@ -74,78 +73,6 @@ public static class DeviceTests
     public static void Vibrate(int index, double left, double right)
     {
         try { var v = new XInputVibration { Left = (ushort)(left * 65535), Right = (ushort)(right * 65535) }; XInputSetState(index, ref v); } catch { }
-    }
-
-    // ------------------------------------------------------------------ vitesse du disque
-    public sealed record DiskResult(double WriteMBs, double ReadMBs, double RandomIops, string Verdict);
-
-    /// <summary>
-    /// Écrit puis relit un fichier temporaire de 512 Mo sans cache de Windows (vitesse réelle du disque), puis mesure
-    /// les lectures aléatoires de 4 Ko pendant 2 s. Le fichier est supprimé à la fin.
-    /// </summary>
-    public static async Task<DiskResult> DiskBenchAsync(string drive, IProgress<string> progress, CancellationToken ct)
-    {
-        const int block = 4 << 20, total = 512 << 20;
-        var dir = string.Equals(Path.GetPathRoot(Path.GetTempPath()), drive, StringComparison.OrdinalIgnoreCase) ? Path.GetTempPath() : drive;
-        var file = Path.Combine(dir, "CentrePC-test-vitesse.tmp");
-        var raw = new byte[block + 4096];
-        new Random(1).NextBytes(raw);
-        var pin = GCHandle.Alloc(raw, GCHandleType.Pinned);
-        try
-        {
-            // Tampon aligné sur 4 Ko (exigé pour contourner le cache de Windows)
-            int offset = (int)(4096 - (pin.AddrOfPinnedObject().ToInt64() % 4096)) % 4096;
-            var noCache = FileOptions.WriteThrough | (FileOptions)0x20000000;   // FILE_FLAG_NO_BUFFERING
-            return await Task.Run(() =>
-            {
-                double write, read, iops;
-                progress.Report("Écriture de 512 Mo…");
-                using (var h = File.OpenHandle(file, FileMode.Create, FileAccess.Write, FileShare.None, noCache, total))
-                {
-                    var sw = Stopwatch.StartNew();
-                    for (long pos = 0; pos < total; pos += block)
-                    {
-                        ct.ThrowIfCancellationRequested();
-                        RandomAccess.Write(h, new ReadOnlySpan<byte>(raw, offset, block), pos);
-                    }
-                    write = total / 1048576.0 / sw.Elapsed.TotalSeconds;
-                }
-                progress.Report("Lecture de 512 Mo…");
-                using (var h = File.OpenHandle(file, FileMode.Open, FileAccess.Read, FileShare.None, (FileOptions)0x20000000))
-                {
-                    var sw = Stopwatch.StartNew();
-                    for (long pos = 0; pos < total; pos += block)
-                    {
-                        ct.ThrowIfCancellationRequested();
-                        RandomAccess.Read(h, new Span<byte>(raw, offset, block), pos);
-                    }
-                    read = total / 1048576.0 / sw.Elapsed.TotalSeconds;
-
-                    progress.Report("Petits fichiers (lectures aléatoires de 4 Ko)…");
-                    var rnd = new Random(2);
-                    long count = 0;
-                    sw.Restart();
-                    while (sw.Elapsed.TotalSeconds < 2)
-                    {
-                        ct.ThrowIfCancellationRequested();
-                        long pos = (long)rnd.Next(0, total / 4096) * 4096;
-                        RandomAccess.Read(h, new Span<byte>(raw, offset, 4096), pos);
-                        count++;
-                    }
-                    iops = count / sw.Elapsed.TotalSeconds;
-                }
-                var verdict = read < 250 ? "Vitesse d'un disque dur : pour Windows et les jeux, un SSD serait nettement plus rapide."
-                            : read < 700 ? "Vitesse d'un SSD SATA : bonne pour un usage courant."
-                            : read < 2500 ? "Vitesse d'un SSD NVMe : très rapide."
-                            : "Vitesse d'un SSD NVMe récent : excellente.";
-                return new DiskResult(write, read, iops, verdict);
-            }, ct);
-        }
-        finally
-        {
-            pin.Free();
-            try { File.Delete(file); } catch { }
-        }
     }
 
     // ------------------------------------------------------------------ vitesse d'Internet

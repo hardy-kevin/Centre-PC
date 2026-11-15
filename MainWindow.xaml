@@ -993,8 +993,8 @@
                                 </StackPanel>
                             </Border>
                             <!-- Outils de test : on vérifie soi-même, en direct -->
-                            <TextBlock Text="OUTILS DE TEST" Foreground="{StaticResource Text2}" FontSize="11" FontWeight="SemiBold" Margin="2,0,0,10"/>
-                            <WrapPanel x:Name="DeviceTestTiles" Margin="0,0,0,14"/>
+                            <TextBlock Text="VÉRIFIER LE PC" Foreground="{StaticResource Text2}" FontSize="11" FontWeight="SemiBold" Margin="2,0,0,10"/>
+                            <StackPanel x:Name="DeviceTestTiles" Margin="0,0,0,14"/>
                             <TextBlock Text="ÉTAT DES PÉRIPHÉRIQUES" Foreground="{StaticResource Text2}" FontSize="11" FontWeight="SemiBold" Margin="2,0,0,10"/>
                             <StackPanel x:Name="DevicesPanel"/>
                         </StackPanel>
@@ -1245,6 +1245,12 @@
                                     <WrapPanel Margin="0,10,0,0">
                                         <Button Style="{StaticResource BaseButton}" Content="Revoir la présentation" Click="ShowWelcome_Click" Margin="0,0,10,0"/>
                                         <Button Style="{StaticResource BaseButton}" Content="Ouvrir le dossier des réglages" Click="OpenDataDir_Click"/>
+                                    </WrapPanel>
+                                    <WrapPanel Margin="0,10,0,0">
+                                        <Button Style="{StaticResource BaseButton}" Content="Conditions d'utilisation" Click="Terms_Click" Margin="0,0,10,0"/>
+                                        <Button Style="{StaticResource BaseButton}" Content="Confidentialité" Click="Privacy_Click" Margin="0,0,10,0"/>
+                                        <Button Style="{StaticResource BaseButton}" Content="Usage professionnel" Click="ProNotice_Click"
+                                                ToolTip="Ce qu'un professionnel doit avoir en règle pour utiliser Centre PC dans son activité"/>
                                     </WrapPanel>
                                 </StackPanel>
                             </Border>
@@ -1677,14 +1683,22 @@
                             </StackPanel>
                         </Border>
                     </UniformGrid>
-                    <Button Style="{StaticResource AccentButton}" Content="Commencer" HorizontalAlignment="Right" Padding="28,12" Margin="0,24,0,0" Click="Welcome_Click"/>
+                    <Grid Margin="0,24,0,0">
+                        <TextBlock Style="{StaticResource Subtle}" FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center" Margin="8,0,180,0">
+                            Centre PC est gratuit et libre (licence GPL). En commençant, vous acceptez ses
+                            <Hyperlink Click="Terms_Click" Foreground="{StaticResource Accent}">conditions d'utilisation</Hyperlink>.
+                            Aucune donnée personnelle n'est collectée :
+                            <Hyperlink Click="Privacy_Click" Foreground="{StaticResource Accent}">confidentialité</Hyperlink>.
+                        </TextBlock>
+                        <Button Style="{StaticResource AccentButton}" Content="Commencer" HorizontalAlignment="Right" Padding="28,12" Click="Welcome_Click"/>
+                    </Grid>
                 </StackPanel>
             </Border>
         </Grid>
 
-        <!-- Nouveauté proposée une seule fois, au premier lancement qui suit son arrivée : l'accès rapide -->
+        <!-- Annonce proposée une seule fois : le lanceur au raccourci, la discrétion, le démarrage avec Windows -->
         <Grid x:Name="QuickOfferOverlay" Visibility="Collapsed" Background="#E6090910">
-            <Border Width="620" VerticalAlignment="Center" HorizontalAlignment="Center" Background="{StaticResource Surface}"
+            <Border Width="660" VerticalAlignment="Center" HorizontalAlignment="Center" Background="{StaticResource Surface}"
                     BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="20" Padding="36,30">
                 <Border.Effect><DropShadowEffect BlurRadius="40" ShadowDepth="6" Opacity="0.5"/></Border.Effect>
                 <StackPanel>
@@ -1693,24 +1707,56 @@
                             <TextBlock Text="&#xE945;" Style="{StaticResource Glyph}" FontSize="22" Foreground="White"/>
                         </Border>
                         <Border Background="#2D2560" CornerRadius="8" Padding="8,2" Margin="14,0,0,0" VerticalAlignment="Center">
-                            <TextBlock Text="Nouveau" FontSize="12" FontWeight="SemiBold" Foreground="#B9AAFF"/>
+                            <TextBlock x:Name="QuickOfferBadge" Text="Nouveau" FontSize="12" FontWeight="SemiBold" Foreground="#B9AAFF"/>
                         </Border>
                     </StackPanel>
-                    <TextBlock Text="Ouvrez vos applications en un instant" FontFamily="{StaticResource DisplayFont}" FontSize="24" FontWeight="SemiBold" Margin="0,16,0,6"/>
+                    <TextBlock x:Name="QuickOfferTitle" Text="Centre PC, toujours à portée de main" FontFamily="{StaticResource DisplayFont}" FontSize="24" FontWeight="SemiBold" Margin="0,16,0,6" TextWrapping="Wrap"/>
                     <TextBlock x:Name="QuickOfferText" Style="{StaticResource Subtle}" FontSize="14" TextWrapping="Wrap"/>
-                    <!-- Le raccourci, dessiné comme des touches -->
-                    <WrapPanel x:Name="QuickOfferKeys" Margin="0,18,0,0"/>
-                    <Border Style="{StaticResource Card}" Margin="0,18,0,0" Padding="16,12">
-                        <StackPanel>
-                            <TextBlock TextWrapping="Wrap" Style="{StaticResource Subtle}" FontSize="12.5"
-                                       Text="Discret : aucune fenêtre à gérer. Fermer Centre PC le garde disponible près de l'horloge ; clic droit sur l'icône › Quitter pour l'arrêter. Tout se règle ou se désactive dans Réglages › Accès rapide."/>
-                            <CheckBox x:Name="QuickOfferStartup" IsChecked="True" Margin="0,10,0,0"
-                                      Content="Disponible dès l'ouverture de session (sans fenêtre, seulement l'icône)"/>
+
+                    <!-- 1. Le lanceur, d'un raccourci -->
+                    <Grid Margin="0,22,0,0">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/></Grid.ColumnDefinitions>
+                        <Border Width="34" Height="34" CornerRadius="10" Background="{StaticResource Surface2}" VerticalAlignment="Top">
+                            <TextBlock Text="&#xE721;" Style="{StaticResource Glyph}" FontSize="15"/>
+                        </Border>
+                        <StackPanel Grid.Column="1" Margin="14,0,0,0">
+                            <TextBlock Text="Le lanceur, d'un simple raccourci" FontWeight="SemiBold" FontSize="15"/>
+                            <TextBlock Style="{StaticResource Subtle}" FontSize="13" TextWrapping="Wrap" Margin="0,2,0,0"
+                                       Text="Depuis n'importe où : tapez quelques lettres, Entrée, l'application s'ouvre et le lanceur disparaît."/>
+                            <WrapPanel x:Name="QuickOfferKeys" Margin="0,10,0,0"/>
                         </StackPanel>
-                    </Border>
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,22,0,0">
-                        <Button Style="{StaticResource BaseButton}" Content="Non merci" Click="QuickOfferNo_Click" Padding="20,10" Margin="0,0,10,0"/>
-                        <Button Style="{StaticResource AccentButton}" Content="Activer l'accès rapide" Click="QuickOfferYes_Click" Padding="22,10"/>
+                    </Grid>
+
+                    <!-- 2. Discret -->
+                    <Grid Margin="0,18,0,0">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/></Grid.ColumnDefinitions>
+                        <Border Width="34" Height="34" CornerRadius="10" Background="{StaticResource Surface2}" VerticalAlignment="Top">
+                            <TextBlock Text="&#xE7B3;" Style="{StaticResource Glyph}" FontSize="15"/>
+                        </Border>
+                        <StackPanel Grid.Column="1" Margin="14,0,0,0">
+                            <TextBlock Text="Discret, jamais envahissant" FontWeight="SemiBold" FontSize="15"/>
+                            <TextBlock Style="{StaticResource Subtle}" FontSize="13" TextWrapping="Wrap" Margin="0,2,0,0"
+                                       Text="Aucune fenêtre à gérer : Centre PC attend sous forme d'une petite icône près de l'horloge. Fermer sa fenêtre l'y range ; clic droit sur l'icône › Quitter pour l'arrêter."/>
+                        </StackPanel>
+                    </Grid>
+
+                    <!-- 3. Démarrage avec Windows -->
+                    <Grid x:Name="QuickOfferStartupRow" Margin="0,18,0,0">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/></Grid.ColumnDefinitions>
+                        <Border Width="34" Height="34" CornerRadius="10" Background="{StaticResource Surface2}" VerticalAlignment="Top">
+                            <TextBlock Text="&#xE7E8;" Style="{StaticResource Glyph}" FontSize="15"/>
+                        </Border>
+                        <StackPanel Grid.Column="1" Margin="14,0,0,0">
+                            <CheckBox x:Name="QuickOfferStartup" IsChecked="True" FontWeight="SemiBold" FontSize="15" Content="Prêt dès l'allumage du PC"/>
+                            <TextBlock Style="{StaticResource Subtle}" FontSize="13" TextWrapping="Wrap" Margin="0,2,0,0"
+                                       Text="Centre PC démarre avec Windows sans ouvrir de fenêtre : seule l'icône apparaît près de l'horloge, le raccourci fonctionne aussitôt."/>
+                        </StackPanel>
+                    </Grid>
+
+                    <TextBlock Style="{StaticResource Subtle}" FontSize="12" Margin="0,20,0,0" Text="Tout se règle ou se désactive à tout moment dans Réglages › Accès rapide."/>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
+                        <Button x:Name="QuickOfferNoButton" Style="{StaticResource BaseButton}" Content="Non merci" Click="QuickOfferNo_Click" Padding="20,10" Margin="0,0,10,0"/>
+                        <Button x:Name="QuickOfferYesButton" Style="{StaticResource AccentButton}" Content="Activer" Click="QuickOfferYes_Click" Padding="22,10"/>
                     </StackPanel>
                 </StackPanel>
             </Border>

@@ -22,20 +22,29 @@ public partial class MainWindow
 
     private static readonly (string key, string title, string glyph, string color, string text)[] TestTools =
     {
-        ("checkup", "Bilan complet du PC", "\uE9D9", "#7C5CFF", "Santé, performances, stabilité, rapport"),
+        ("checkup", "Bilan du PC", "\uE9D9", "#7C5CFF", "Santé, performances, stabilité et rapport, en un clic · de 3 minutes à 1 heure"),
         ("keyboard", "Clavier", "", "#64748B", "Chaque touche, et plusieurs à la fois"),
         ("mouse", "Souris", "", "#64748B", "Tous les boutons, molette, double clics involontaires, fréquence"),
         ("screen", "Écran", "", "#8B5CF6", "Pixels morts et fluidité, en plein écran"),
         ("speakers", "Haut-parleurs", "", "#EC4899", "Gauche, droite, graves et aigus"),
         ("mic", "Micro", "", "#EC4899", "Niveau en direct, enregistrement et réécoute"),
         ("gamepad", "Manette", "", "#64748B", "Boutons, sticks, gâchettes, vibrations"),
-        ("bench", "Performances et endurance", "\uE950", "#8B5CF6", "Processeur, carte graphique, températures"),
+        ("bench", "Processeur, mémoire, carte graphique", "\uE950", "#8B5CF6", "Mesure, endurance, stabilité, températures"),
         ("disk", "Vitesse du disque", "", "#10B981", "Lecture et écriture réelles"),
         ("net", "Vitesse d'Internet", "", "#3B82F6", "Latence, téléchargement, envoi"),
     };
 
     /// <summary>Tuiles « Outils de test » en tête de la page Périphériques.</summary>
     private readonly Dictionary<string, Button> _testTiles = new();
+
+    private readonly List<(TextBlock label, WrapPanel panel)> _testGroups = new();
+
+    private static string TestGroup(string key) => key switch
+    {
+        "keyboard" or "mouse" or "screen" or "gamepad" => "Saisie et affichage",
+        "speakers" or "mic" => "Son",
+        _ => "Performances"
+    };
 
     /// <summary>
     /// Tuiles adaptées à ce qui est branché : la manette n'apparaît que si une manette est détectée, le micro et les
@@ -47,28 +56,48 @@ public partial class MainWindow
         if (_testTiles.TryGetValue("gamepad", out var g)) g.Visibility = Has("input", "gamepad") ? Visibility.Visible : Visibility.Collapsed;
         if (_testTiles.TryGetValue("mic", out var m)) m.Visibility = Has("audio", "mic") ? Visibility.Visible : Visibility.Collapsed;
         if (_testTiles.TryGetValue("speakers", out var sp)) sp.Visibility = Has("audio", "speakers") ? Visibility.Visible : Visibility.Collapsed;
+        // Un groupe sans aucun test utile (pas de sortie son ni de micro, par exemple) disparaît avec son titre.
+        foreach (var (label, panel) in _testGroups)
+            label.Visibility = panel.Visibility = panel.Children.Cast<UIElement>().Any(c => c.Visibility == Visibility.Visible) ? Visibility.Visible : Visibility.Collapsed;
     }
 
+    /// <summary>
+    /// Le bilan est l'entrée principale (une grande tuile) ; dessous, « Tester un élément » : les tests un par un,
+    /// regroupés par besoin (saisie et affichage, son, performances).
+    /// </summary>
     private void BuildTestTiles()
     {
         DeviceTestTiles.Children.Clear();
         _testTiles.Clear();
-        foreach (var (key, title, glyph, color, text) in TestTools)
+        _testGroups.Clear();
+        Button Tile(string key, string title, string glyph, string color, string text, bool main)
         {
             var g = new Grid();
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             g.ColumnDefinitions.Add(new ColumnDefinition());
-            g.Children.Add(Glyph(glyph, color, 30));
-            var sp = new StackPanel { Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
-            sp.Children.Add(new TextBlock { Text = title, FontWeight = FontWeights.SemiBold });
-            sp.Children.Add(new TextBlock { Text = text, Style = (Style)FindResource("Subtle"), FontSize = 11.5, TextWrapping = TextWrapping.Wrap });
+            g.Children.Add(Glyph(glyph, color, main ? 40 : 30));
+            var sp = new StackPanel { Margin = new Thickness(main ? 14 : 12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+            sp.Children.Add(new TextBlock { Text = title, FontWeight = FontWeights.SemiBold, FontSize = main ? 16 : 13 });
+            sp.Children.Add(new TextBlock { Text = text, Style = (Style)FindResource("Subtle"), FontSize = main ? 12.5 : 11.5, TextWrapping = TextWrapping.Wrap });
             Grid.SetColumn(sp, 1); g.Children.Add(sp);
-            var b = new Button { Style = (Style)FindResource("BaseButton"), Content = g, Width = 252, Height = 66, Margin = new Thickness(0, 0, 10, 10),
-                                 HorizontalContentAlignment = HorizontalAlignment.Left, Padding = new Thickness(12, 8, 12, 8) };
-            var k = key;
-            b.Click += (_, _) => OpenDeviceTest(k);
-            _testTiles[k] = b;
-            DeviceTestTiles.Children.Add(b);
+            var b = new Button { Style = (Style)FindResource("BaseButton"), Content = g, Width = main ? 514 : 252, Height = main ? 76 : 66, Margin = new Thickness(0, 0, 10, 10),
+                                 HorizontalAlignment = HorizontalAlignment.Left, HorizontalContentAlignment = HorizontalAlignment.Left, Padding = new Thickness(12, 8, 12, 8) };
+            if (main) { b.BorderBrush = (Brush)FindResource("Accent"); b.BorderThickness = new Thickness(1.5); }
+            b.Click += (_, _) => OpenDeviceTest(key);
+            _testTiles[key] = b;
+            return b;
+        }
+        foreach (var (key, title, glyph, color, text) in TestTools.Where(t => t.key == "checkup"))
+            DeviceTestTiles.Children.Add(Tile(key, title, glyph, color, text, true));
+        DeviceTestTiles.Children.Add(new TextBlock { Text = "Ou tester un élément :", Style = (Style)FindResource("Subtle"), Margin = new Thickness(2, 4, 0, 8) });
+        foreach (var group in TestTools.Where(t => t.key != "checkup").GroupBy(t => TestGroup(t.key)))
+        {
+            var label = new TextBlock { Text = group.Key, FontWeight = FontWeights.SemiBold, FontSize = 12.5, Margin = new Thickness(2, 2, 0, 6) };
+            var panel = new WrapPanel();
+            foreach (var (key, title, glyph, color, text) in group) panel.Children.Add(Tile(key, title, glyph, color, text, false));
+            _testGroups.Add((label, panel));
+            DeviceTestTiles.Children.Add(label);
+            DeviceTestTiles.Children.Add(panel);
         }
     }
 

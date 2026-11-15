@@ -38,13 +38,11 @@ public sealed class HwinfoSession
             File.Delete(s._stop);
             File.WriteAllText(s._status, "start|Préparation…");
             var script = Path.Combine(s._dir, "session.ps1");
-            File.WriteAllText(script, Script, new UTF8Encoding(true));
             var data = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CentrePC");
             Directory.CreateDirectory(data);
             var marker = Path.Combine(data, "hwinfo-installe-par-centre-pc");
-            var args = $"-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"{script}\" -Stop \"{s._stop}\" -Status \"{s._status}\" "
-                     + $"-Parent {Environment.ProcessId} -Marker \"{marker}\"";
-            Process.Start(new ProcessStartInfo("powershell.exe", args) { UseShellExecute = true, Verb = "runas", WindowStyle = ProcessWindowStyle.Hidden });
+            // Script vérifié par empreinte avant exécution en administrateur (un autre programme ne peut pas le remplacer)
+            Updates.StartVerifiedElevated(script, Script, ("Stop", s._stop), ("Status", s._status), ("Parent", Environment.ProcessId.ToString()), ("Marker", marker));
             s.Started = true;
             return s;
         }
@@ -95,7 +93,9 @@ public sealed class HwinfoSession
     }
 
     private const string Script = @"
-param([string]$Stop, [string]$Status, [int]$Parent, [string]$Marker)
+param([string]$Stop, [string]$Status, [string]$Parent, [string]$Marker)
+$Parent = [int]$Parent
+$skip = $false
 $ErrorActionPreference = 'Continue'
 try { Start-Transcript -Path (Join-Path (Split-Path $Status) 'session.log') -Force | Out-Null } catch { }
 function Say($state, $msg) { [IO.File]::WriteAllText($Status, ""$state|$msg"", [Text.Encoding]::UTF8) }
@@ -103,6 +103,8 @@ function Find-Exe {
     foreach ($p in @(""$env:ProgramFiles\HWiNFO64\HWiNFO64.EXE"", ""${env:ProgramFiles(x86)}\HWiNFO64\HWiNFO64.EXE"")) { if (Test-Path $p) { return $p } }
     return $null
 }
+# Seul un programme signé par son éditeur (signature valide) est lancé avec les droits administrateur
+function Trusted($path) { try { (Get-AuthenticodeSignature -FilePath $path).Status -eq 'Valid' } catch { $false } }
 function Stopped { (Test-Path $Stop) -or -not (Get-Process -Id $Parent -ErrorAction SilentlyContinue) }
 # HWiNFO suivi par son nom (et non par le processus lancé) : il peut se relancer lui-même ou avoir été ouvert par l'installation
 function Running { @(Get-Process -Name 'HWiNFO64' -ErrorAction SilentlyContinue) }
@@ -121,13 +123,36 @@ $ours = Test-Path $Marker
 $exe = Find-Exe
 if (-not $exe) {
     Say 'install' 'Installation de HWiNFO pour le test…'
-    & winget install --id REALiX.HWiNFO -e --silent --accept-package-agreements --accept-source-agreements --disable-interactivity | Out-Null
+    # Source « winget » seule : une panne de la source du Microsoft Store ne doit pas bloquer l'installation
+    $out = & winget install --id REALiX.HWiNFO -e --source winget --silent --accept-package-agreements --accept-source-agreements --disable-interactivity 2>&1
+    $code = $LASTEXITCODE
+    Write-Output (""winget install : code $code""); $out | Select-Object -Last 12 | ForEach-Object { Write-Output ""  $_"" }
     $exe = Find-Exe
-    if (-not $exe) { Say 'error' 'HWiNFO n''a pas pu être installé : le test se fera sans lui.'; exit 1 }
+    if (-not $exe) {
+        # Catalogue local périmé ou abîmé : mise à jour, puis un second essai
+        Say 'install' 'Installation de HWiNFO : nouvel essai…'
+        & winget source update --name winget --disable-interactivity 2>&1 | Out-Null
+        $out = & winget install --id REALiX.HWiNFO -e --source winget --silent --accept-package-agreements --accept-source-agreements --disable-interactivity 2>&1
+        $code = $LASTEXITCODE
+        Write-Output (""winget install (2) : code $code""); $out | Select-Object -Last 12 | ForEach-Object { Write-Output ""  $_"" }
+        $exe = Find-Exe
+    }
+    if (-not $exe) {
+        $why = switch ($code) {
+            { $_ -eq -1978335215 } { 'le fichier téléchargé ne correspond pas à celui attendu (l''éditeur vient de publier une version)' }
+            { $_ -eq -1978335212 } { 'paquet introuvable dans le catalogue' }
+            { $_ -eq -1978335224 } { 'téléchargement impossible (connexion ?)' }
+            default { 'code ' + ('0x{0:X8}' -f $code) }
+        }
+        Say 'error' ""HWiNFO n'a pas pu être installé ($why).""
+        try { Stop-Transcript | Out-Null } catch { }
+        exit 1
+    }
     New-Item -ItemType File -Force -Path $Marker | Out-Null
     $ours = $true
 }
-if (Stopped) { $exe = $exe } else {
+if (-not (Trusted $exe)) { Say 'error' 'HWiNFO trouvé sur ce PC n''est pas signé par son éditeur : il n''est pas lancé.'; $skip = $true }
+if ((Stopped) -or $skip) { $exe = $exe } else {
     # Réglages du test (l'original est remis à la fin)
     $ini = Join-Path (Split-Path $exe) 'HWiNFO64.INI'
     $backup = if (Test-Path $ini) { [IO.File]::ReadAllText($ini) } else { $null }

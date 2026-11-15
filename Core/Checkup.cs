@@ -282,6 +282,8 @@ public static class StabilityHistory
         public int WheaErrors, WheaWarnings, GpuDriverResets, DiskErrors;
         public DateTime? LastGpuReset, LastDiskError;
         public List<(string App, int Count)> AppCrashes = new();
+        /// <summary>Détail des erreurs matérielles (date, numéro d'événement, début du message).</summary>
+        public List<string> WheaDetails = new();
     }
 
     private static IEnumerable<EventRecord> Read(string log, string filter)
@@ -309,7 +311,15 @@ public static class StabilityHistory
             }
         foreach (var e in Read("System", "(Provider[@Name='Microsoft-Windows-Kernel-Power'] and EventID=41)")) using (e) res.UnexpectedShutdowns.Add(e.TimeCreated ?? DateTime.MinValue);
         foreach (var e in Read("System", "Provider[@Name='Microsoft-Windows-WHEA-Logger']"))
-            using (e) { if (e.Level <= 2) res.WheaErrors++; else res.WheaWarnings++; }
+            using (e)
+            {
+                // Niveaux Windows : 1 critique, 2 erreur, 3 avertissement (erreur corrigée) ; 4 et 0 = simple information, ignorée
+                if (e.Level is not (1 or 2 or 3)) continue;
+                if (e.Level <= 2) res.WheaErrors++; else res.WheaWarnings++;
+                string text = null;
+                try { text = e.FormatDescription()?.Split('\n')[0].Trim(); } catch { }
+                if (res.WheaDetails.Count < 8) res.WheaDetails.Add($"{e.TimeCreated:g} · événement {e.Id}" + (string.IsNullOrEmpty(text) ? "" : $" · {(text.Length > 140 ? text[..140] + "…" : text)}"));
+            }
         foreach (var e in Read("System", "(Provider[@Name='Display'] and EventID=4101)"))
             using (e) { res.GpuDriverResets++; res.LastGpuReset ??= e.TimeCreated; }
         foreach (var e in Read("System", "((Provider[@Name='disk'] and (EventID=7 or EventID=51 or EventID=153)) or (Provider[@Name='Ntfs'] and EventID=55) or (Provider[@Name='stornvme'] and EventID=11))"))

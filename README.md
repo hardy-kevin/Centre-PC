@@ -29,7 +29,9 @@ Tout fonctionne hors connexion (applications, bureau, icônes, réglages). Seuls
 
 ## Confidentialité
 
-Centre PC ne collecte rien. Pour identifier une appli inconnue, seul son **nom** est envoyé à winget (outil de Microsoft) et à Wikidata. Cette option se désactive dans Réglages.
+Centre PC ne collecte aucune donnée personnelle et n'envoie aucune statistique. Pour identifier une appli inconnue, seul son **nom** est envoyé à des catalogues publics (winget, Flathub, Steam, Google Play, Wikidata, GitHub) ; cette option se désactive dans Réglages. Détail complet : [CONFIDENTIALITE.md](CONFIDENTIALITE.md).
+
+Voir aussi : [conditions d'utilisation](CONDITIONS.md) · [usage professionnel](USAGE-PROFESSIONNEL.md).
 
 ## Déployer sur plusieurs postes
 
@@ -41,7 +43,16 @@ Paramètres Windows > Applications installées > Centre PC > Désinstaller. Les 
 
 ## Licence
 
-© 2026 Kevin Hardy — [PolyForm Noncommercial 1.0.0](LICENSE.md) : usage non commercial libre, usage commercial sur accord de l'auteur.
+© 2026 Kevin Hardy — logiciel libre et gratuit sous licence [GNU GPL version 3](LICENSE) : chacun peut l'utiliser (y compris dans une activité professionnelle), l'étudier, le modifier et le redistribuer ; toute version modifiée distribuée doit rester libre, sous la même licence, avec son code source.
+
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org).
+
+- **Committers and reviewers** : [Kevin Hardy](https://github.com/hardy-kevin) (owner of this repository).
+- **Approvers** : [Kevin Hardy](https://github.com/hardy-kevin).
+- Released binaries are built from this repository by GitHub Actions, without manual modification.
+- **Privacy policy** : this program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it. Details: [CONFIDENTIALITE.md](CONFIDENTIALITE.md).
 
 ## Pour les développeurs
 

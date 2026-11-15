@@ -412,6 +412,13 @@ public sealed record CpuCore(int Index, int FirstLogical, int Logicals, int Effi
 /// <summary>Cœurs physiques du processeur (Windows), dans l'ordre ; « Efficiency » plus grand = cœur de performance (P-core).</summary>
 public static class CpuTopology
 {
+    /// <summary>Processeur logique du cœur le plus rapide (premier cœur de performance) ; -1 si inconnu.</summary>
+    public static int FastestLogical()
+    {
+        var cores = Cores();
+        return cores.Count == 0 ? -1 : cores.OrderByDescending(c => c.Efficiency).ThenBy(c => c.FirstLogical).First().FirstLogical;
+    }
+
     public static List<CpuCore> Cores()
     {
         var res = new List<CpuCore>();

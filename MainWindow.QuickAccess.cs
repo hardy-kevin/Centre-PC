@@ -65,7 +65,13 @@ public partial class MainWindow
         {
             using var run = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run");
             if (Settings.Current.QuickAccess && Settings.Current.StartWithWindows)
+            {
                 run.SetValue("CentrePC", $"\"{Environment.ProcessPath}\" --tray");
+                // Choix explicite dans Centre PC : une désactivation antérieure dans le Gestionnaire des tâches (Applications de démarrage) est levée
+                using var approved = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run");
+                if (approved.GetValue("CentrePC") is byte[] b && b.Length > 0 && (b[0] & 1) == 1)
+                    approved.SetValue("CentrePC", new byte[] { 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }, RegistryValueKind.Binary);
+            }
             else if (run.GetValue("CentrePC") != null)
                 run.DeleteValue("CentrePC", false);
         }
@@ -138,37 +144,56 @@ public partial class MainWindow
     /// Premier lancement depuis l'arrivée de l'accès rapide : on demande à l'utilisateur s'il le veut (une seule fois,
     /// après l'accueil, et seulement quand la fenêtre est affichée).
     /// </summary>
+    /// <summary>« startup » : l'accès rapide est déjà utilisé, seule la proposition de démarrer avec Windows est faite.</summary>
+    private bool _offerStartupOnly;
+
+    private bool CanStartWithWindows => SelfInstall.IsInstalledCopy && !Native.IsPackaged;
+
     private void MaybeOfferQuickAccess()
     {
         var cfg = Settings.Current;
-        if (cfg.QuickAccessAsked || !cfg.OnboardingDone || !IsVisible || WelcomeOverlay.Visibility == Visibility.Visible) return;
-        // Raccourci proposé : le premier vraiment libre (Ctrl + Alt + Espace est celui de Claude, Alt + Espace celui de ChatGPT…)
-        try
+        if (!cfg.OnboardingDone || !IsVisible || WelcomeOverlay.Visibility == Visibility.Visible || QuickOfferOverlay.Visibility == Visibility.Visible) return;
+        // Accès rapide déjà actif mais Centre PC ne démarre pas avec Windows : on le propose une fois (jamais si l'accès rapide a été refusé)
+        _offerStartupOnly = cfg.QuickAccessAsked;
+        if (_offerStartupOnly && (!cfg.QuickAccess || cfg.StartWithWindows || cfg.StartupAsked || !CanStartWithWindows)) return;
+        if (!_offerStartupOnly)
         {
-            var scanned = HotkeyConflicts.ScanKnownApps();
-            var names = InstalledNames();
-            var free = new[] { new HotkeyCombo(HotkeyCombo.Ctrl | HotkeyCombo.Alt, 0x20), new HotkeyCombo(HotkeyCombo.Ctrl | HotkeyCombo.Shift, 0x20),
-                               new HotkeyCombo(HotkeyCombo.Alt | HotkeyCombo.Shift, 0x20), new HotkeyCombo(HotkeyCombo.Ctrl | HotkeyCombo.Alt | HotkeyCombo.Shift, 0x20) }
-                .FirstOrDefault(c => HotkeyConflicts.Check(c, null, scanned, names).State is HotkeyState.Free or HotkeyState.Note);
-            if (free != null) cfg.QuickAccessHotkey = free.Serialize();
-        }
-        catch (Exception ex) { Log.Error("Raccourci proposé", ex); }
-        var hk = CurrentHotkey;
-        QuickOfferText.Text = "Un petit lanceur s'ouvre d'un geste : vous tapez le nom, l'application s'ouvre, le lanceur disparaît. "
-            + "Ouvrez-le avec l'icône près de l'horloge ou avec ce raccourci :";
-        QuickOfferKeys.Children.Clear();
-        foreach (var part in hk.Label.Split(" + "))
-        {
-            if (QuickOfferKeys.Children.Count > 0)
-                QuickOfferKeys.Children.Add(new TextBlock { Text = "+", Margin = new Thickness(8, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center, Opacity = 0.6 });
-            QuickOfferKeys.Children.Add(new Border
+            // Raccourci proposé : le premier vraiment libre (Ctrl + Alt + Espace est celui de Claude, Alt + Espace celui de ChatGPT…)
+            try
             {
-                Background = (System.Windows.Media.Brush)FindResource("Surface2"), BorderBrush = (System.Windows.Media.Brush)FindResource("Line"),
-                BorderThickness = new Thickness(1, 1, 1, 3), CornerRadius = new CornerRadius(8), Padding = new Thickness(14, 6, 14, 6),
-                Child = new TextBlock { Text = part, FontWeight = FontWeights.SemiBold, FontSize = 14 }
-            });
+                var scanned = HotkeyConflicts.ScanKnownApps();
+                var names = InstalledNames();
+                var free = new[] { new HotkeyCombo(HotkeyCombo.Ctrl | HotkeyCombo.Alt, 0x20), new HotkeyCombo(HotkeyCombo.Ctrl | HotkeyCombo.Shift, 0x20),
+                                   new HotkeyCombo(HotkeyCombo.Alt | HotkeyCombo.Shift, 0x20), new HotkeyCombo(HotkeyCombo.Ctrl | HotkeyCombo.Alt | HotkeyCombo.Shift, 0x20) }
+                    .FirstOrDefault(c => HotkeyConflicts.Check(c, null, scanned, names).State is HotkeyState.Free or HotkeyState.Note);
+                if (free != null) cfg.QuickAccessHotkey = free.Serialize();
+            }
+            catch (Exception ex) { Log.Error("Raccourci proposé", ex); }
         }
-        QuickOfferStartup.Visibility = SelfInstall.IsInstalledCopy && !Native.IsPackaged ? Visibility.Visible : Visibility.Collapsed;
+        var hk = CurrentHotkey;
+        QuickOfferBadge.Text = _offerStartupOnly ? "Nouveau" : "Accès rapide";
+        QuickOfferTitle.Text = _offerStartupOnly ? "Votre lanceur, prêt dès l'allumage du PC" : "Centre PC, toujours à portée de main";
+        QuickOfferText.Text = _offerStartupOnly
+            ? "Le lanceur s'ouvre déjà avec votre raccourci. Centre PC peut maintenant démarrer en même temps que Windows, sans aucune fenêtre : le raccourci fonctionne dès l'ouverture de session."
+            : "Inutile de garder une fenêtre ouverte : un raccourci suffit pour lancer n'importe quelle application.";
+        QuickOfferKeys.Children.Clear();
+        if (hk != null)
+            foreach (var part in hk.Label.Split(" + "))
+            {
+                if (QuickOfferKeys.Children.Count > 0)
+                    QuickOfferKeys.Children.Add(new TextBlock { Text = "+", Margin = new Thickness(8, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center, Opacity = 0.6 });
+                QuickOfferKeys.Children.Add(new Border
+                {
+                    Background = (System.Windows.Media.Brush)FindResource("Surface2"), BorderBrush = (System.Windows.Media.Brush)FindResource("Line"),
+                    BorderThickness = new Thickness(1, 1, 1, 3), CornerRadius = new CornerRadius(8), Padding = new Thickness(14, 6, 14, 6),
+                    Child = new TextBlock { Text = part, FontWeight = FontWeights.SemiBold, FontSize = 14 }
+                });
+            }
+        QuickOfferStartupRow.Visibility = CanStartWithWindows ? Visibility.Visible : Visibility.Collapsed;
+        QuickOfferStartup.IsChecked = true;
+        QuickOfferStartup.Visibility = _offerStartupOnly ? Visibility.Collapsed : Visibility.Visible;   // décision portée par le bouton
+        QuickOfferYesButton.Content = _offerStartupOnly ? "Démarrer avec Windows" : "Activer";
+        QuickOfferNoButton.Content = _offerStartupOnly ? "Non merci" : "Plus tard dans les Réglages";
         QuickOfferOverlay.Visibility = Visibility.Visible;
     }
 
@@ -177,18 +202,24 @@ public partial class MainWindow
         var cfg = Settings.Current;
         cfg.QuickAccess = true;
         cfg.QuickAccessAsked = true;
-        cfg.StartWithWindows = QuickOfferStartup.Visibility == Visibility.Visible && QuickOfferStartup.IsChecked == true;
+        cfg.StartupAsked = true;
+        cfg.StartWithWindows = CanStartWithWindows && (_offerStartupOnly || QuickOfferStartup.IsChecked == true);
         Settings.Save();
         QuickOfferOverlay.Visibility = Visibility.Collapsed;
         ApplyQuickAccess();
         InitQuickAccessSettings();
         var hk = _launcher?.HotkeyLabel;
-        ShowToast("Accès rapide activé" + (hk != null ? $" : essayez {hk}." : " : cliquez sur l'icône près de l'horloge."));
+        ShowToast(cfg.StartWithWindows
+            ? "C'est prêt : au prochain démarrage, seule l'icône apparaîtra près de l'horloge" + (hk != null ? $". Essayez dès maintenant {hk}." : ".")
+            : "Accès rapide activé" + (hk != null ? $" : essayez {hk}." : " : cliquez sur l'icône près de l'horloge."));
+        // Montrer où Centre PC se trouve désormais
+        _tray?.ShowBalloon("Centre PC est ici", (hk != null ? $"{hk} ouvre le lanceur. " : "") + "Clic sur cette icône : lanceur ; clic droit : ouvrir Centre PC ou quitter.");
     }
 
     private void QuickOfferNo_Click(object sender, RoutedEventArgs e)
     {
-        Settings.Current.QuickAccessAsked = true;
+        var cfg = Settings.Current;
+        if (_offerStartupOnly) cfg.StartupAsked = true; else cfg.QuickAccessAsked = true;
         Settings.Save();
         QuickOfferOverlay.Visibility = Visibility.Collapsed;
         ShowToast("D'accord. Vous pourrez l'activer à tout moment dans Réglages › Accès rapide.");

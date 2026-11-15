@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 using CentrePC.Core;
@@ -25,9 +26,8 @@ public partial class MainWindow
     // ================================================================== préparation
     private void BuildBenchTest()
     {
-        DeviceTestHost.Children.Add(TestText("Met le processeur et la carte graphique à 100 % pour mesurer leurs performances ou valider une installation "
-            + "en conditions extrêmes (nouveau PC, nouveau refroidissement, overclocking, XMP). Chaque calcul est vérifié : une seule erreur signale un PC instable. "
-            + "Le test s'arrête tout seul si une température devient dangereuse ; Échap l'arrête à tout moment."));
+        DeviceTestHost.Children.Add(TestText("Pousse le PC à 100 % pour le mesurer ou valider une installation. Chaque calcul est vérifié ; "
+            + "le test s'arrête seul si une température devient dangereuse, et Échap l'arrête à tout moment."));
 
         var measures = new StackPanel { Margin = new Thickness(0, 0, 0, 12) };
         DeviceTestHost.Children.Add(Section("Ce qui sera mesuré"));
@@ -44,54 +44,48 @@ public partial class MainWindow
                                                 _benchGpuLuid, v => _benchGpuLuid = (long)v));
         }
 
-        DeviceTestHost.Children.Add(Section("Mesurer les performances"));
-        DeviceTestHost.Children.Add(TestText("Environ 1 minute : processeur sur 1 cœur, puis sur tous les cœurs, puis carte graphique. Pour comparer avant / après un réglage."));
-        DeviceTestHost.Children.Add(TestButton("", "Mesurer les performances", () => StartBench(endurance: false), accent: true));
-
-        DeviceTestHost.Children.Add(Section("Test d'endurance"));
-        DeviceTestHost.Children.Add(TestText("Charge maximale continue : vérifie la stabilité, les températures, les ventilateurs et l'absence de bridage dans la durée."));
-        DeviceTestHost.Children.Add(Choices(new List<(string, object)> { ("5 minutes", 5), ("15 minutes", 15), ("30 minutes", 30) }, _benchMinutes, v => _benchMinutes = (int)v));
-        var what = new WrapPanel { Margin = new Thickness(0, 0, 0, 8) };
-        what.Children.Add(Check("Processeur", _benchCpu, v => _benchCpu = v));
-        if (gpus.Count > 0) what.Children.Add(Check("Carte graphique", _benchGpu, v => _benchGpu = v));
-        DeviceTestHost.Children.Add(what);
-        DeviceTestHost.Children.Add(TestButton("", "Lancer le test d'endurance", () => StartBench(endurance: true), accent: true));
-
-        DeviceTestHost.Children.Add(Section("Test cœur par cœur"));
-        DeviceTestHost.Children.Add(TestText("Charge chaque cœur seul, l'un après l'autre, à sa fréquence maximale : repère un cœur instable ou plus faible que les autres, "
-            + "que la charge sur tous les cœurs masque (réglages de tension par cœur, overclocking, Curve Optimizer…)."));
-        DeviceTestHost.Children.Add(Choices(new List<(string, object)> { ("10 s par cœur", 10), ("30 s par cœur", 30), ("1 min par cœur", 60) }, _coreSeconds, v => _coreSeconds = (int)v));
-        DeviceTestHost.Children.Add(TestButton("\uE950", "Tester cœur par cœur", StartCoreTest, accent: true));
-
-        DeviceTestHost.Children.Add(Section("Test de contrainte graphique (façon 3DMark)"));
-        DeviceTestHost.Children.Add(TestText("Rendu 3D lourd en boucle (2560 × 1440). Chaque boucle est mesurée : la stabilité compare la pire à la meilleure. "
-            + "Comme 3DMark, 97 % ou plus = la carte graphique et son refroidissement tiennent la charge sans perdre de performance."));
-        DeviceTestHost.Children.Add(Choices(new List<(string, object)> { ("10 boucles × 30 s", 10), ("20 boucles × 60 s (comme 3DMark)", 20) }, _stressLoops, v => _stressLoops = (int)v));
-        DeviceTestHost.Children.Add(TestButton("\uE7F4", "Lancer le test de contrainte", StartGraphicsStress, accent: true));
-
-        DeviceTestHost.Children.Add(Section("Test de stabilité mémoire et processeur (façon OCCT)"));
-        DeviceTestHost.Children.Add(TestText("Remplit la mémoire libre de motifs, la relit et la vérifie en boucle, pendant que le processeur calcule à fond : "
-            + "aucune erreur pendant 1 heure = installation stable (référence des techniciens). Indispensable après l'activation du XMP / EXPO."));
-        DeviceTestHost.Children.Add(Choices(new List<(string, object)> { ("15 min", 15), ("30 min", 30), ("1 heure", 60), ("2 heures", 120) }, _stabMinutes, v => _stabMinutes = (int)v));
-        DeviceTestHost.Children.Add(Choices(new List<(string, object)> { ("Mémoire + processeur", "both"), ("Mémoire seule", "mem"), ("Processeur seul", "cpu") }, _stabMode, v => _stabMode = (string)v));
-        DeviceTestHost.Children.Add(TestButton("\uE9F5", "Lancer le test de stabilité", StartStabilityTest, accent: true));
-
-        DeviceTestHost.Children.Add(Section("Outils d'expert (en cas de doute)"));
-        DeviceTestHost.Children.Add(TestText("Les logiciels de référence des techniciens, ouverts le temps de l'utilisation : installés si besoin (paquet officiel), "
-            + "puis désinstallés complètement dès que vous les fermez. Déjà installés, ils sont simplement ouverts et laissés en place.", 12.5));
-        var tools = new WrapPanel { Margin = new Thickness(0, 0, 0, 8) };
-        foreach (var t in ToolSession.Tools)
+        DeviceTestHost.Children.Add(Section("Choisir un test"));
+        _testRows.Clear();
+        DeviceTestHost.Children.Add(TestRow("Mesurer les performances", "Processeur (1 cœur, puis tous) et carte graphique. Pour comparer avant / après un réglage.", "1 min", null,
+            "Mesurer", () => StartBench(endurance: false)));
+        DeviceTestHost.Children.Add(TestRow("Endurance", "Charge maximale continue : températures, ventilateurs, bridage, erreurs de calcul.", "5 à 30 min", box =>
         {
-            var tool = t;
-            var b = TestButton("\uE8A7", t.Name, () =>
+            box.Children.Add(Choices(new List<(string, object)> { ("5 minutes", 5), ("15 minutes", 15), ("30 minutes", 30) }, _benchMinutes, v => _benchMinutes = (int)v));
+            var what = new WrapPanel { Margin = new Thickness(0, 0, 0, 8) };
+            what.Children.Add(Check("Processeur", _benchCpu, v => _benchCpu = v));
+            if (gpus.Count > 0) what.Children.Add(Check("Carte graphique", _benchGpu, v => _benchGpu = v));
+            box.Children.Add(what);
+        }, "Lancer", () => StartBench(endurance: true)));
+        DeviceTestHost.Children.Add(TestRow("Cœur par cœur", "Chaque cœur seul, à sa fréquence maximale : repère un cœur instable ou plus faible que les autres.", "1 à 10 min", box =>
+            box.Children.Add(Choices(new List<(string, object)> { ("10 s par cœur", 10), ("30 s par cœur", 30), ("1 min par cœur", 60) }, _coreSeconds, v => _coreSeconds = (int)v)),
+            "Lancer", StartCoreTest));
+        if (gpus.Count > 0)
+            DeviceTestHost.Children.Add(TestRow("Contrainte graphique", "Rendu 3D lourd en boucle, comme 3DMark : 97 % de stabilité ou plus = la carte tient la charge.", "5 ou 20 min", box =>
+                box.Children.Add(Choices(new List<(string, object)> { ("10 boucles × 30 s", 10), ("20 boucles × 60 s (comme 3DMark)", 20) }, _stressLoops, v => _stressLoops = (int)v)),
+                "Lancer", StartGraphicsStress));
+        DeviceTestHost.Children.Add(TestRow("Stabilité mémoire et processeur", "Mémoire écrite, relue et vérifiée en boucle, processeur à fond, comme OCCT : zéro erreur en 1 heure = PC stable. À faire après avoir activé XMP / EXPO.", "15 min à 2 h", box =>
+        {
+            box.Children.Add(Choices(new List<(string, object)> { ("15 min", 15), ("30 min", 30), ("1 heure", 60), ("2 heures", 120) }, _stabMinutes, v => _stabMinutes = (int)v));
+            box.Children.Add(Choices(new List<(string, object)> { ("Mémoire + processeur", "both"), ("Mémoire seule", "mem"), ("Processeur seul", "cpu") }, _stabMode, v => _stabMode = (string)v));
+        }, "Lancer", StartStabilityTest));
+        DeviceTestHost.Children.Add(TestRow("Outils d'expert", "CPU-Z, GPU-Z, CrystalDiskInfo… installés le temps de l'utilisation, puis retirés à leur fermeture.", "en cas de doute", box =>
+        {
+            box.Children.Add(TestText("Déjà installés, ils sont simplement ouverts et laissés en place. Logiciels tiers : en les ouvrant, vous acceptez la licence de leur éditeur "
+                + "(usage professionnel : voir Réglages › Usage professionnel).", 12.5));
+            var tools = new WrapPanel();
+            foreach (var t in ToolSession.Tools)
             {
-                var err = ToolSession.Open(tool);
-                ShowToast(err ?? $"{tool.Name} s'ouvre (acceptez l'autorisation de Windows). S'il n'était pas installé, il sera retiré à sa fermeture.");
-            });
-            b.ToolTip = t.Purpose;
-            tools.Children.Add(b);
-        }
-        DeviceTestHost.Children.Add(tools);
+                var tool = t;
+                var b = TestButton("\uE8A7", t.Name, () =>
+                {
+                    var err = ToolSession.Open(tool);
+                    ShowToast(err ?? $"{tool.Name} s'ouvre : acceptez l'autorisation de Windows.");
+                });
+                b.ToolTip = t.Purpose;
+                tools.Children.Add(b);
+            }
+            box.Children.Add(tools);
+        }, null, null));
 
         var history = Settings.Current.BenchHistory;
         if (history.Any(h => h.Method == BenchResult.CurrentMethod))
@@ -167,8 +161,9 @@ public partial class MainWindow
                 : "non mesurées (HWiNFO désactivé ci-dessous)."));
             var box = new StackPanel { Margin = new Thickness(18, 4, 0, 4) };
             box.Children.Add(Check("Utiliser HWiNFO pendant le test (Centre PC s'en occupe)", _benchManaged, v => { _benchManaged = v; _ = FillMeasuresAsync(panel, gpus); }));
-            box.Children.Add(TestText("Windows demande une autorisation au lancement du test. Vos réglages HWiNFO sont remis à l'identique ensuite ; "
-                + "son pilote n'est actif que pendant le test" + (installed ? "." : ", et rien ne reste sur le PC après."), 11.5));
+            box.Children.Add(TestText("HWiNFO est un logiciel de REALiX, gratuit pour un usage personnel ; un usage professionnel demande sa licence Pro. "
+                + "En cochant, vous acceptez sa licence. Windows demande une autorisation au lancement du test ; son pilote n'est actif que pendant le test"
+                + (installed ? ", et vos réglages HWiNFO sont remis à l'identique." : ", et rien ne reste sur le PC après."), 11.5));
             panel.Children.Add(box);
         }
         else Row(false, $"Température du processeur : non trouvée dans les mesures de {monitor}.");
@@ -289,7 +284,12 @@ public partial class MainWindow
 
     private BenchRun _bench;
 
-    private bool _benchManaged = true;
+    /// <summary>HWiNFO géré par Centre PC : seulement après accord explicite sur sa licence (mémorisé).</summary>
+    private bool _benchManaged
+    {
+        get => Settings.Current.HwinfoAccepted;
+        set { Settings.Current.HwinfoAccepted = value; Settings.Save(); }
+    }
     private HwinfoSession _hwinfo;
 
     private void StartBench(bool endurance)
@@ -300,14 +300,18 @@ public partial class MainWindow
         BeginBench(endurance);
     }
 
+    /// <summary>Raison pour laquelle la température du processeur manque (reprise dans le rapport du bilan).</summary>
+    private string _sensorIssue;
+
     /// <summary>HWiNFO géré : installation éventuelle, ouverture, puis le test démarre dès que ses mesures arrivent.</summary>
     private async Task PrepareHwinfoAsync(Action begin)
     {
         bool go = false;
         var kind = _testKind;   // test en cours (« bench », « checkup »…) : l'attente s'arrête s'il est fermé
         void Go() { if (go) return; go = true; begin(); }
+        _sensorIssue = null;
         var session = HwinfoSession.Start(out var error);
-        if (session == null) { ShowToast(error); Go(); return; }
+        if (session == null) { _sensorIssue = error; ShowToast(error); Go(); return; }
         _hwinfo = session;
         DeviceTestHost.Children.Clear();
         var title = TestText("Préparation des capteurs…", 15, subtle: false);
@@ -321,7 +325,16 @@ public partial class MainWindow
         {
             var (state, message) = session.Status();
             if (!string.IsNullOrEmpty(message)) detail.Text = message;
-            if (state == "error") { ShowToast(message); session.Stop(); _hwinfo = null; Go(); return; }
+            if (state == "error")
+            {
+                // On ne démarre pas en silence sans température : la raison reste affichée, et l'utilisateur choisit
+                Log.Info("HWiNFO géré : " + message);
+                _sensorIssue = message;
+                session.Stop(); _hwinfo = null;
+                title.Text = "Température du processeur indisponible";
+                detail.Text = message + " Le test peut se faire sans : tout le reste sera mesuré. Vous pouvez aussi ouvrir HWiNFO ou LibreHardwareMonitor vous-même, puis relancer.";
+                return;
+            }
             // HWiNFO refermé avant que ses mesures arrivent : le test démarre sans lui (le script remet tout en ordre)
             if (state is "close" or "uninstall" or "done")
             {
@@ -364,7 +377,11 @@ public partial class MainWindow
             if (_benchCpu) run.Cpu = new CpuLoad(Environment.ProcessorCount);
             if (_benchGpu && gpu != null) run.Gpu = new GpuLoad(gpu);
         }
-        else run.Cpu = new CpuLoad(1);
+        else
+        {
+            int fast = CpuTopology.FastestLogical();
+            run.Cpu = fast >= 0 ? new CpuLoad(1, fast) : new CpuLoad(1);
+        }
         _bench = run;
         SetThreadExecutionState(0x80000000 | 0x1 | 0x2);   // pas de mise en veille pendant le test
         BuildBenchRunning(run);
@@ -696,6 +713,57 @@ public partial class MainWindow
     }
 
     // ================================================================== petits éléments
+    private readonly List<(StackPanel options, TextBlock chevron)> _testRows = new();
+
+    /// <summary>
+    /// Un test = une ligne (nom, une phrase, durée). Les réglages et le bouton de lancement n'apparaissent qu'après le clic,
+    /// et une seule ligne est dépliée à la fois : l'écran reste court.
+    /// </summary>
+    private FrameworkElement TestRow(string title, string text, string duration, Action<StackPanel> options, string launchText, Action launch)
+    {
+        var head = new Grid();
+        head.ColumnDefinitions.Add(new ColumnDefinition());
+        head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var texts = new StackPanel();
+        texts.Children.Add(new TextBlock { Text = title, FontWeight = FontWeights.SemiBold, FontSize = 13.5 });
+        texts.Children.Add(new TextBlock { Text = text, Style = (Style)FindResource("Subtle"), FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 0) });
+        head.Children.Add(texts);
+        var time = new TextBlock { Text = duration, Style = (Style)FindResource("Subtle"), FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(14, 0, 12, 0) };
+        Grid.SetColumn(time, 1); head.Children.Add(time);
+        var chevron = new TextBlock { Text = "\uE76C", FontFamily = (FontFamily)FindResource("Icons"), FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Opacity = 0.7 };
+        Grid.SetColumn(chevron, 2); head.Children.Add(chevron);
+
+        var box = new StackPanel { Margin = new Thickness(0, 12, 0, 0), Visibility = Visibility.Collapsed };
+        options?.Invoke(box);
+        if (launch != null)
+        {
+            var go = TestButton("\uE768", launchText, launch, accent: true);
+            go.HorizontalAlignment = HorizontalAlignment.Left;
+            go.Margin = new Thickness(0, 2, 0, 0);
+            box.Children.Add(go);
+        }
+        var body = new StackPanel();
+        var headButton = new Button { Content = head, Background = Brushes.Transparent, BorderThickness = new Thickness(0), Padding = new Thickness(0), Cursor = Cursors.Hand,
+                                      HorizontalContentAlignment = HorizontalAlignment.Stretch, Focusable = true };
+        headButton.Template = RowTemplate;
+        body.Children.Add(headButton);
+        body.Children.Add(box);
+        _testRows.Add((box, chevron));
+        headButton.Click += (_, _) =>
+        {
+            bool open = box.Visibility != Visibility.Visible;
+            foreach (var (o, c) in _testRows) { o.Visibility = Visibility.Collapsed; c.Text = "\uE76C"; }
+            if (open) { box.Visibility = Visibility.Visible; chevron.Text = "\uE70D"; }
+        };
+        return new Border { Style = (Style)FindResource("Card"), Padding = new Thickness(16, 12, 16, 12), Margin = new Thickness(0, 0, 0, 8), Child = body };
+    }
+
+    /// <summary>Bouton sans décor (toute la ligne est cliquable, y compris au clavier).</summary>
+    private static readonly ControlTemplate RowTemplate = (ControlTemplate)System.Windows.Markup.XamlReader.Parse(
+        "<ControlTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' TargetType='Button'>"
+        + "<Border Background='Transparent'><ContentPresenter/></Border></ControlTemplate>");
+
     private TextBlock Section(string text) => new()
     {
         Text = text.ToUpperInvariant(), FontSize = 11.5, FontWeight = FontWeights.SemiBold, Opacity = 0.7, Margin = new Thickness(0, 14, 0, 8)

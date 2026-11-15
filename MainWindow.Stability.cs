@@ -179,6 +179,12 @@ public partial class MainWindow
                 if (s?.VrmTemp != null) temps.Add("VRM", "#EC4899", s.VrmTemp);
                 temps.Redraw();
 
+                // Sans mesure de température du processeur, pas de coupure de sécurité possible : durée limitée à 30 minutes
+                if (cpuMax == null && el.TotalSeconds > 60 && minutes > 30)
+                {
+                    minutes = 30;
+                    ShowToast("Température du processeur non mesurée : par sécurité, le test est limité à 30 minutes.");
+                }
                 if (errs > 0) { Finish("Erreur détectée : arrêt immédiat"); return; }
                 if (s?.CpuTemp >= 98) { Finish($"Arrêt de sécurité : processeur à {s.CpuTemp:0} °C"); return; }
                 if (s?.VrmTemp >= 120) { Finish($"Arrêt de sécurité : VRM à {s.VrmTemp:0} °C"); return; }

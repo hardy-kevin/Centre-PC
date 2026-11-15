@@ -786,6 +786,11 @@ public static class Elevated
         {
             if (string.IsNullOrWhiteSpace(path) || path.Contains("..")) return false;
             var full = Path.GetFullPath(path);
+            // Lien symbolique ou jonction sur le chemin (fichier ou dossier parent) : refusé, il ferait agir l'instance administrateur ailleurs.
+            // (Les dossiers OneDrive « à la demande » ne sont pas des liens : LinkTarget y est nul.)
+            for (FileSystemInfo node = File.Exists(full) ? new FileInfo(full) : new DirectoryInfo(full); node != null;
+                 node = node is FileInfo f ? f.Directory : ((DirectoryInfo)node).Parent)
+                if (node.Exists && node.LinkTarget != null) return false;
             var pub = Environment.GetFolderPath(Environment.SpecialFolder.CommonDesktopDirectory);
             if (!string.IsNullOrEmpty(pub) && full.StartsWith(pub.TrimEnd('\\') + "\\", StringComparison.OrdinalIgnoreCase)) return true;
             var users = Path.GetDirectoryName(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));

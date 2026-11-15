@@ -84,7 +84,7 @@ public partial class MainWindow
         DeviceTestHost.Children.Add(Choices(new List<(string, object)> { ("10 min", 10), ("30 min", 30), ("1 heure", 60), ("2 heures", 120) }, p.MemMin, v => { p.MemMin = (int)v; OpenDeviceTest("checkup"); }));
         DeviceTestHost.Children.Add(TestText("Durée de l'endurance :", 12.5));
         DeviceTestHost.Children.Add(Choices(new List<(string, object)> { ("5 min", 5), ("10 min", 10), ("20 min", 20), ("30 min", 30) }, p.EnduranceMin, v => { p.EnduranceMin = (int)v; Refresh(); }));
-        var managed = Check("Température du processeur et ventilateurs avec HWiNFO (géré par Centre PC, retiré à la fin)", _benchManaged, v => _benchManaged = v);
+        var managed = Check("Température du processeur et ventilateurs avec HWiNFO (logiciel tiers, gratuit pour un usage personnel ; j'accepte sa licence)", _benchManaged, v => _benchManaged = v);
         managed.Margin = new Thickness(0, 4, 0, 10);
         DeviceTestHost.Children.Add(managed);
 
@@ -330,6 +330,10 @@ public partial class MainWindow
             snap.Windows = $"{facts.Os} {facts.OsVersion}"; snap.Build = facts.Build; snap.Bios = facts.Bios + (facts.BiosReleased is DateTime br ? $" ({br:yyyy-MM-dd})" : "");
             snap.Board = facts.Board; snap.Cpu = facts.Cpu; snap.Ram = $"{facts.RamInstalled / 1073741824.0:0} Go {facts.RamType} {facts.RamConfigured} MT/s ({facts.RamModules} barrette(s))";
             snap.Gpus = facts.Gpus.Select(g => $"{g.Name} {g.Driver}").ToList(); snap.Disks = facts.Disks.Select(d => $"{d.Name} {d.Size}").ToList();
+            if (sensors?.Read().CpuTemp == null)
+                report.Add(DeviceStatus.Info, "Capteurs", "La température du processeur et les ventilateurs n'ont pas été mesurés pendant ce bilan.",
+                           _sensorIssue ?? (_benchManaged ? "HWiNFO n'a pas fourni ses mesures." : "HWiNFO non autorisé dans les options du bilan, et aucun programme de surveillance ouvert."),
+                           "Cocher « Température du processeur et ventilateurs avec HWiNFO » avant de lancer le bilan, ou ouvrir HWiNFO / LibreHardwareMonitor.");
             if (facts.PowerPlan != null && facts.PowerPlan.Contains("conomi", StringComparison.OrdinalIgnoreCase) && !facts.Laptop)
                 report.Add(DeviceStatus.Warning, "Alimentation", "Le PC est en mode « économie d'énergie » : il est volontairement bridé.",
                            $"Mode d'alimentation actif : {facts.PowerPlan}.", "Passer en mode « Équilibré » ou « Performances élevées » (Paramètres > Système > Alimentation).");
@@ -400,7 +404,7 @@ public partial class MainWindow
                 var lvl = h.WheaErrors > 0 ? DeviceStatus.Problem : DeviceStatus.Warning;
                 hl = (DeviceStatus)Math.Max((int)hl, (int)lvl);
                 report.Add(lvl, "Matériel", $"Le matériel a signalé {h.WheaErrors + h.WheaWarnings} erreur(s) à Windows (processeur, mémoire ou bus PCI Express).",
-                    $"WHEA-Logger : {h.WheaErrors} erreur(s) graves, {h.WheaWarnings} corrigée(s).", "Souvent un overclocking / XMP instable, une barrette ou une carte d'extension mal enfoncée.");
+                    $"WHEA-Logger : {h.WheaErrors} erreur(s) graves, {h.WheaWarnings} corrigée(s). " + string.Join(" | ", h.WheaDetails), "Souvent un overclocking / XMP instable, une barrette ou une carte d'extension mal enfoncée.");
             }
             if (h.GpuDriverResets > 0)
             {
@@ -451,7 +455,9 @@ public partial class MainWindow
             if (plan.Cpu && !ct.IsCancellationRequested)
             {
                 n = "Processeur"; Begin(n);
-                var s1 = await Phase(plan.CpuSingleSec, new CpuLoad(1), null, "Processeur, 1 cœur");
+                // Fixée sur un cœur de performance : sinon Windows peut placer la mesure sur un cœur d'efficacité, bien plus lent
+                int fastCore = CpuTopology.FastestLogical();
+                var s1 = await Phase(plan.CpuSingleSec, fastCore >= 0 ? new CpuLoad(1, fastCore) : new CpuLoad(1), null, "Processeur, 1 cœur");
                 var cpuAll = new CpuLoad(Environment.ProcessorCount);
                 var s2 = await Phase(plan.CpuAllSec, cpuAll, null, $"Processeur, {Environment.ProcessorCount} fils");
                 single = PhaseStats.Steady(s1.Cpu); all = PhaseStats.Steady(s2.Cpu);

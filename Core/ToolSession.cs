@@ -29,14 +29,12 @@ public static class ToolSession
             var dir = Path.Combine(Path.GetTempPath(), "CentrePC-outils");
             Directory.CreateDirectory(dir);
             var script = Path.Combine(dir, "outil.ps1");
-            File.WriteAllText(script, Script, new UTF8Encoding(true));
             var data = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CentrePC");
             Directory.CreateDirectory(data);
             var marker = Path.Combine(data, $"outil-{t.WingetId}-installe-par-centre-pc");
             var log = Path.Combine(dir, $"{t.Name}.log");
-            Process.Start(new ProcessStartInfo("powershell.exe",
-                $"-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"{script}\" -Id \"{t.WingetId}\" -Filter \"{t.ExeFilter}\" -Marker \"{marker}\" -Log \"{log}\"")
-            { UseShellExecute = true, Verb = "runas", WindowStyle = ProcessWindowStyle.Hidden });
+            // Script vérifié par empreinte avant exécution en administrateur
+            Updates.StartVerifiedElevated(script, Script, ("Id", t.WingetId), ("Filter", t.ExeFilter), ("Marker", marker), ("Log", log));
             return null;
         }
         catch (System.ComponentModel.Win32Exception) { return "Autorisation refusée."; }
@@ -47,7 +45,8 @@ public static class ToolSession
 param([string]$Id, [string]$Filter, [string]$Marker, [string]$Log)
 try { Start-Transcript -Path $Log -Force | Out-Null } catch { }
 function Find-Exe {
-    $roots = @($env:ProgramFiles, ${env:ProgramFiles(x86)}, (Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Packages')) | Where-Object { $_ -and (Test-Path $_) }
+    # Uniquement les dossiers protégés de Windows : un programme sans droits ne peut pas y déposer de faux outil
+    $roots = @($env:ProgramFiles, ${env:ProgramFiles(x86)}) | Where-Object { $_ -and (Test-Path $_) }
     foreach ($r in $roots) {
         $f = Get-ChildItem -Path $r -Filter $Filter -Recurse -Depth 3 -File -ErrorAction SilentlyContinue | Select-Object -First 1
         if ($f) { return $f.FullName }
@@ -64,6 +63,9 @@ if (-not $exe) {
     New-Item -ItemType File -Force -Path $Marker | Out-Null
     $ours = $true
 }
+$sig = Get-AuthenticodeSignature -FilePath $exe
+Write-Output ""Signature : $($sig.Status) $($sig.SignerCertificate.Subject)""
+if ($sig.Status -ne 'Valid') { Write-Output 'Outil non signé par son éditeur : non lancé'; try { Stop-Transcript | Out-Null } catch { }; exit 2 }
 Write-Output ""Ouverture : $exe""
 $name = [IO.Path]::GetFileNameWithoutExtension($exe)
 Start-Process -FilePath $exe | Out-Null
