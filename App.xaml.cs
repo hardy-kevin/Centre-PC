@@ -99,6 +99,7 @@ public partial class App : Application
         AppDomain.CurrentDomain.ProcessExit += (_, _) => Settings.Flush();
         base.OnStartup(e);
         Settings.Load();
+        RemoteCatalog.LoadCached();   // copie locale du catalogue signé, revérifiée à chaque lancement
         var main = new MainWindow();
         // Ouverture de session : Centre PC démarre discrètement, seulement l'icône près de l'horloge
         if (e.Args.Contains("--tray") && Settings.Current.QuickAccess) main.StartInBackground();

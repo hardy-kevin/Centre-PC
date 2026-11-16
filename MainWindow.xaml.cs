@@ -81,7 +81,7 @@ public partial class MainWindow : Window
         if (_started) return;   // déjà lancé en arrière-plan (démarrage avec Windows), la fenêtre s'affiche seulement maintenant
         _started = true;
         SearchBox.Focus();
-        if (!Settings.Current.OnboardingDone) WelcomeOverlay.Visibility = Visibility.Visible;
+        if (!Settings.Current.OnboardingDone) { WelcomeOverlay.Visibility = Visibility.Visible; _launchScreen = true; }
         ApplyOnlineState();
         if (App.OpenUpdatesPage) ShowUpdatesPage();
         // Vérification quotidienne application fermée : tâche planifiée créée / retirée selon le réglage (copie installée seulement)
@@ -91,6 +91,13 @@ public partial class MainWindow : Window
         await ReloadAsync();
         MaybeOfferQuickAccess();
         _ = ScanDevicesLaterAsync();   // pastille « Périphériques », sans faire attendre
+        // Retours d'expérience (sans effet sans accord) : au démarrage, puis toutes les heures — l'envoi lui-même reste
+        // limité à une fois par jour. Centre PC reste souvent ouvert des jours entiers près de l'horloge.
+        _ = Feedback.SendAsync(DateTime.Now);
+        _ = RefreshCatalogAsync();
+        _feedbackTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromHours(1) };
+        _feedbackTimer.Tick += (_, _) => { if (_online) _ = Feedback.SendAsync(DateTime.Now); };
+        _feedbackTimer.Start();
         Log.Info($"Démarrage : liste affichée en {sw.ElapsedMilliseconds} ms ({_apps.Count} applications)");
         bool changed = false;
         try
@@ -189,9 +196,9 @@ public partial class MainWindow : Window
 
         int tidyable = _desk.Count(d => d.OnDesktop && !d.Keep && (d.IsShortcut || Settings.Current.TidyFiles));   // les fichiers passent par « Ranger mes fichiers »
         DeskHint.Text = tidyable > 0
-            ? $"{tidyable} icône(s) peuvent être rangées : cliquez sur « Ranger le bureau ». Rien n'est supprimé : chaque icône peut retrouver sa place à tout moment."
-            : "Le bureau est rangé. Les icônes restent accessibles ici, classées par catégorie.";
-        StoredLabel.Text = DesktopManager.FoldersMode ? "rangées dans les dossiers de catégorie" : "rangées dans Centre PC";
+            ? "Vos icônes ne sont pas supprimées : rangées, elles restent accessibles dans Applications et reviennent en un clic."
+            : "Le bureau est net. Vos icônes sont dans Applications, et reviennent en un clic.";
+        StoredLabel.Text = DesktopManager.FoldersMode ? "rangées dans des dossiers, sur le bureau" : "rangées (visibles dans Applications)";
         RefreshHistory();
         UpdateDeskOptions();
         UpdateDocsBadge();
@@ -256,6 +263,15 @@ public partial class MainWindow : Window
         Settings.Save();
         SearchBox.Focus();
         MaybeOfferQuickAccess();
+    }
+
+    private System.Windows.Threading.DispatcherTimer _feedbackTimer;
+
+    /// <summary>Catalogue signé : s'il a changé, la liste est reclassée (les choix de l'utilisateur restent prioritaires).</summary>
+    private async Task RefreshCatalogAsync(bool force = false)
+    {
+        try { if (await RemoteCatalog.RefreshAsync(DateTime.Now, force)) await ReloadAsync(); }
+        catch (Exception ex) { Log.Error("Catalogue", ex); }
     }
 
     private void ShowWelcome_Click(object sender, RoutedEventArgs e) => WelcomeOverlay.Visibility = Visibility.Visible;

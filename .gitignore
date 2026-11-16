@@ -5,3 +5,9 @@ publish/
 *.user
 build.log
 verification.log
+# Fichiers locaux de Wrangler (Cloudflare) : jamais publiés
+Serveur/.wrangler/
+Serveur/node_modules/
+# Clés privées du catalogue : jamais dans le dépôt, même par erreur (les clés publiques cle-publique*.txt, elles, peuvent y être)
+cle-catalogue*
+cle-secours*

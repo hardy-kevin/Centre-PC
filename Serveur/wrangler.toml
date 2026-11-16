@@ -1,0 +1,11 @@
+name = "centre-pc-retours"
+main = "retours-worker.js"
+compatibility_date = "2026-11-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "centre-pc-retours"
+database_id = "0461c001-c4c2-4add-b5a7-fc4bd4dd89f7"   # affiché par « wrangler d1 create »
+
+[triggers]
+crons = ["17 3 * * *"]        # nettoyage quotidien des données de plus de 90 jours

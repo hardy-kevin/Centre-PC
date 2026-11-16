@@ -14,7 +14,7 @@
     <Company>Kevin Hardy</Company>
     <Copyright>© 2026 Kevin Hardy</Copyright>
     <Description>Applications, bureau et mises à jour de Windows en un seul endroit.</Description>
-    <Version>1.2.3</Version>
+    <Version>1.2.4</Version>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>true</SelfContained>
     <PublishSingleFile>true</PublishSingleFile>

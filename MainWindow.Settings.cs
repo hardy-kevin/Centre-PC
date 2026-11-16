@@ -24,6 +24,9 @@ public partial class MainWindow
     {
         _settingsInit = true;
         AutoOnlineCheck.IsChecked = Settings.Current.AutoOnline;
+        RemoteCatalogCheck.IsChecked = Settings.Current.RemoteCatalog;
+        RemoteCatalogCheck.Visibility = RemoteCatalogStatus.Visibility = RemoteCatalog.Active ? Visibility.Visible : Visibility.Collapsed;
+        RemoteCatalogStatus.Text = RemoteCatalog.Current is { } cat ? $"Catalogue du {cat.Date} : {cat.Classement.Count} application(s) reconnue(s)." : "Aucun catalogue reçu pour l'instant.";
         _settingsInit = false;
         int unsorted = SortCandidates(includeSkipped: true).Count;
         OnlineSummary.Text = unsorted == 0
@@ -65,6 +68,7 @@ public partial class MainWindow
         RefreshExclusions();
         _settingsInit = true;
         DailyCheckBox.IsChecked = Settings.Current.DailyCheck;
+        RefreshFeedbackUi();
         _settingsInit = false;
         bool canSchedule = !Native.IsPackaged && SelfInstall.IsInstalledCopy;
         DailyCheckBox.IsEnabled = TestNotifButton.IsEnabled = canSchedule;
@@ -98,6 +102,14 @@ public partial class MainWindow
         Settings.Current.AutoOnline = AutoOnlineCheck.IsChecked == true;
         Settings.Save();
         if (Settings.Current.AutoOnline) await RunOnlineAsync(silent: true);
+    }
+
+    private async void RemoteCatalog_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_settingsInit) return;
+        Settings.Current.RemoteCatalog = RemoteCatalogCheck.IsChecked == true;
+        Settings.Save();
+        if (Settings.Current.RemoteCatalog) await RefreshCatalogAsync(force: true);
     }
 
     private async void RetryOnline_Click(object sender, RoutedEventArgs e)
@@ -364,7 +376,8 @@ public partial class MainWindow
             AppUpdateBadge.Visibility = Visibility.Visible;
             AppUpdateBadgeText.Text = $"Version {r.Version} disponible";
             // Proposée au démarrage, sauf si elle a déjà été refusée (elle reste installable dans Réglages)
-            if (fromUser || Settings.Current.SkippedAppVersion != r.Version.ToString()) ShowAppUpdateOverlay();
+            if (fromUser) ShowAppUpdateOverlay();
+            else if (Settings.Current.SkippedAppVersion != r.Version.ToString() && !_launchScreen) { _launchScreen = true; ShowAppUpdateOverlay(); }
         }
         else
         {
@@ -433,6 +446,55 @@ public partial class MainWindow
 
     // Textes de référence, publiés avec le code source (toujours à jour, lisibles sans Centre PC)
     private static string DocUrl(string file) => AppUpdater.RepoUrl.Replace("/releases", "/blob/HEAD/" + file);
+    // ------------------------------------------------------------------ retours d'expérience
+    private void RefreshFeedbackUi()
+    {
+        FeedbackCheck.IsChecked = Feedback.Enabled;
+        int n = Feedback.Enabled ? Feedback.Queue().Count : 0;
+        FeedbackStatus.Text = !Feedback.Enabled ? "Rien n'est enregistré ni envoyé."
+            : (n == 0 ? "Aucun retour en attente." : n == 1 ? "1 retour en attente." : $"{n} retours en attente.")
+              + (Feedback.CanSend ? " Envoi groupé, une fois par jour au plus." : " L'envoi n'est pas actif dans cette version : rien ne quitte ce PC.")
+              + (Feedback.Enabled && Feedback.LastResult != null ? " " + Feedback.LastResult : "");
+        FeedbackSendButton.IsEnabled = Feedback.Enabled && Feedback.CanSend && n > 0;
+    }
+
+    private void Feedback_Click(object sender, RoutedEventArgs e)
+    {
+        Feedback.SetConsent(FeedbackCheck.IsChecked == true);
+        RefreshFeedbackUi();
+        ShowToast(Feedback.Enabled ? "Merci. Vous pouvez voir à tout moment ce qui serait envoyé." : "Retours désactivés : la file d'attente a été effacée.");
+    }
+
+    private void FeedbackView_Click(object sender, RoutedEventArgs e)
+    {
+        if (File.Exists(Feedback.QueuePath)) Updates.Open("notepad.exe", $"\"{Feedback.QueuePath}\"");
+        else ShowToast(Feedback.Enabled ? "Aucun retour en attente pour l'instant." : "Rien n'est enregistré : les retours sont désactivés.");
+    }
+
+    private async void FeedbackSend_Click(object sender, RoutedEventArgs e)
+    {
+        FeedbackSendButton.IsEnabled = false;
+        int n = await Feedback.SendAsync(DateTime.Now, force: true);
+        RefreshFeedbackUi();
+        ShowToast(n > 0 ? $"{n} retour(s) envoyé(s). Merci." : Feedback.LastResult ?? "Rien à envoyer.");
+    }
+
+    private void FeedbackClear_Click(object sender, RoutedEventArgs e)
+    {
+        Feedback.Clear();
+        RefreshFeedbackUi();
+        ShowToast("File d'attente effacée.");
+    }
+
+    private void ResetHiddenNotes_Click(object sender, RoutedEventArgs e)
+    {
+        int n = Settings.Current.HiddenDeviceNotes.Count;
+        Settings.Current.HiddenDeviceNotes.Clear();
+        Settings.Save();
+        _deviceViews.Clear();
+        ShowToast(n == 0 ? "Aucune information n'était masquée." : "Les informations masquées sont de nouveau visibles dans Périphériques.");
+    }
+
     private void Terms_Click(object sender, RoutedEventArgs e) => Updates.Open(DocUrl("CONDITIONS.md"));
     private void Privacy_Click(object sender, RoutedEventArgs e) => Updates.Open(DocUrl("CONFIDENTIALITE.md"));
     private void ProNotice_Click(object sender, RoutedEventArgs e) => Updates.Open(DocUrl("USAGE-PROFESSIONNEL.md"));

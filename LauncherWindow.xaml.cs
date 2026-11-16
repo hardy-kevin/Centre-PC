@@ -19,7 +19,11 @@ public partial class LauncherWindow : Window
     private readonly Func<IEnumerable<AppItem>> _apps;
     private readonly Action<AppItem> _launch;
     private readonly Action _openMain;
-    private readonly List<(AppItem app, Border row)> _results = new();
+    private readonly List<(Action run, Border row)> _results = new();
+
+    /// <summary>Actions de Centre PC proposées dans la recherche (« bilan », « capture », « mises à jour »…).</summary>
+    public Action<string> RunAction { get; set; }
+
     private int _sel;
     private DateTime _hiddenAt;
 
@@ -109,7 +113,7 @@ public partial class LauncherWindow : Window
         var q = Query.Text.Trim();
         var apps = _apps().ToList();
         Hint.Text = q.Length > 0 ? "↑ ↓ pour choisir · Entrée pour ouvrir · Échap pour effacer"
-                  : "Tapez le nom d'une application · Échap pour fermer" + (HotkeyLabel != null ? $" · {HotkeyLabel} pour rouvrir" : "");
+                  : "Tapez une application ou une action (bilan, capture…) · Échap pour fermer" + (HotkeyLabel != null ? $" · {HotkeyLabel} pour rouvrir" : "");
         if (q.Length > 0) BuildResults(apps, q);
         else BuildBrowse(apps);
         Scroll.ScrollToTop();
@@ -131,7 +135,14 @@ public partial class LauncherWindow : Window
             })
             .OrderBy(x => x.score).ThenBy(x => x.rank).ThenBy(x => x.a.Label, StringComparer.CurrentCultureIgnoreCase)
             .Take(40).Select(x => x.a).ToList();
-        if (found.Count == 0)
+        var actions = RunAction == null ? new() : LauncherActions.Find(q);
+        foreach (var (id, label, glyph) in actions)
+        {
+            var row = ActionRow(id, label, glyph);
+            _results.Add((() => { HideLauncher(); RunAction(id); }, row));
+            Host.Children.Add(row);
+        }
+        if (found.Count == 0 && actions.Count == 0)
         {
             Host.Children.Add(new TextBlock { Text = "Aucune application ne correspond.", Style = (Style)FindResource("Subtle"), Margin = new Thickness(4, 10, 0, 0) });
             return;
@@ -139,7 +150,7 @@ public partial class LauncherWindow : Window
         foreach (var a in found)
         {
             var row = ResultRow(a);
-            _results.Add((a, row));
+            _results.Add((() => Run(a), row));
             Host.Children.Add(row);
         }
         Select(0);
@@ -160,6 +171,28 @@ public partial class LauncherWindow : Window
         var row = new Border { CornerRadius = new CornerRadius(10), Padding = new Thickness(10, 7, 10, 7), Background = Brushes.Transparent, Child = grid, Cursor = Cursors.Hand };
         row.MouseEnter += (_, _) => Select(_results.FindIndex(r => r.row == row));
         row.MouseLeftButtonUp += (_, _) => Open(a, row);
+        return row;
+    }
+
+    private Border ActionRow(string id, string label, string glyph)
+    {
+        var grid = new Grid();
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition());
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.Children.Add(new Border
+        {
+            Width = 28, Height = 28, CornerRadius = new CornerRadius(8), Background = (Brush)FindResource("Accent"), VerticalAlignment = VerticalAlignment.Center,
+            Child = new TextBlock { Text = glyph, Style = (Style)FindResource("Glyph"), FontSize = 13, Foreground = Brushes.White,
+                                    HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center }
+        });
+        var name = new TextBlock { Text = label, FontSize = 14, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0) };
+        Grid.SetColumn(name, 1); grid.Children.Add(name);
+        var cat = new TextBlock { Text = "Centre PC", Style = (Style)FindResource("Subtle"), FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0) };
+        Grid.SetColumn(cat, 2); grid.Children.Add(cat);
+        var row = new Border { CornerRadius = new CornerRadius(10), Padding = new Thickness(10, 7, 10, 7), Background = Brushes.Transparent, Child = grid, Cursor = Cursors.Hand };
+        row.MouseEnter += (_, _) => Select(_results.FindIndex(r => r.row == row));
+        row.MouseLeftButtonUp += (_, _) => { HideLauncher(); RunAction?.Invoke(id); };
         return row;
     }
 
@@ -281,7 +314,7 @@ public partial class LauncherWindow : Window
         {
             case Key.Down: Select(_sel + 1); e.Handled = true; break;
             case Key.Up: Select(_sel - 1); e.Handled = true; break;
-            case Key.Enter: Run(_results[_sel].app); e.Handled = true; break;
+            case Key.Enter: _results[_sel].run(); e.Handled = true; break;
         }
     }
 

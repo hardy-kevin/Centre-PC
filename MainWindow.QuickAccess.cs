@@ -29,7 +29,7 @@ public partial class MainWindow
         {
             try
             {
-                _launcher ??= new LauncherWindow(() => _apps.Where(a => !Settings.IsHidden(a.Name)), Launch, ShowMainWindow) { Capture = CaptureFromLauncher };
+                _launcher ??= new LauncherWindow(() => _apps.Where(a => !Settings.IsHidden(a.Name)), Launch, ShowMainWindow) { Capture = CaptureFromLauncher, RunAction = RunLauncherAction };
                 if (_tray == null)
                 {
                     _tray = new TrayHost();
@@ -83,6 +83,23 @@ public partial class MainWindow
     {
         new WindowInteropHelper(this).EnsureHandle();
         _ = StartupAsync();
+    }
+
+    /// <summary>Action choisie dans le lanceur : Centre PC s'ouvre directement au bon endroit.</summary>
+    private void RunLauncherAction(string id)
+    {
+        if (id == "capture") { CaptureFromLauncher("zone"); return; }
+        ShowMainWindow();
+        if (Overlays.Any(o => o.Visibility == Visibility.Visible)) return;   // une fenêtre est déjà ouverte par-dessus (test en cours…) : on ne la remplace pas
+        switch (id)
+        {
+            case "updates": ShowUpdatesPage(); break;
+            case "documents": NavDocuments.IsChecked = true; break;
+            case "desktop": NavDesktop.IsChecked = true; break;
+            case "devices": NavDevices.IsChecked = true; break;
+            case "settings": NavSettings.IsChecked = true; break;
+            case "checkup" or "startup" or "space": NavDevices.IsChecked = true; OpenDeviceTest(id); break;
+        }
     }
 
     private void ShowMainWindow()
@@ -149,9 +166,16 @@ public partial class MainWindow
 
     private bool CanStartWithWindows => SelfInstall.IsInstalledCopy && !Native.IsPackaged;
 
+    /// <summary>
+    /// Un seul écran proposé par lancement (accueil, accès rapide ou mise à jour de Centre PC) : les autres attendent le
+    /// lancement suivant, pour ne pas enchaîner les fenêtres devant l'utilisateur.
+    /// </summary>
+    private bool _launchScreen;
+
     private void MaybeOfferQuickAccess()
     {
         var cfg = Settings.Current;
+        if (_launchScreen) return;
         if (!cfg.OnboardingDone || !IsVisible || WelcomeOverlay.Visibility == Visibility.Visible || QuickOfferOverlay.Visibility == Visibility.Visible) return;
         // Accès rapide déjà actif mais Centre PC ne démarre pas avec Windows : on le propose une fois (jamais si l'accès rapide a été refusé)
         _offerStartupOnly = cfg.QuickAccessAsked;
@@ -194,6 +218,7 @@ public partial class MainWindow
         QuickOfferStartup.Visibility = _offerStartupOnly ? Visibility.Collapsed : Visibility.Visible;   // décision portée par le bouton
         QuickOfferYesButton.Content = _offerStartupOnly ? "Démarrer avec Windows" : "Activer";
         QuickOfferNoButton.Content = _offerStartupOnly ? "Non merci" : "Plus tard dans les Réglages";
+        _launchScreen = true;
         QuickOfferOverlay.Visibility = Visibility.Visible;
     }
 

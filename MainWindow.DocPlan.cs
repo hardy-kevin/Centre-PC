@@ -34,9 +34,11 @@ public partial class MainWindow
         var cfg = Settings.Current;
         // Les éléments déplacés ou supprimés depuis par l'utilisateur sortent de la vérification
         if (cfg.DocReview.RemoveAll(e => !File.Exists(e.To) && !Directory.Exists(e.To)) > 0) Settings.Save();
+        // Un rangement non contesté au bout de 7 jours est considéré comme accepté (il reste annulable dans « Rangé récemment »)
+        if (cfg.DocReview.RemoveAll(e => e.Date < DateTime.Now.AddDays(-7)) > 0) Settings.Save();
         int toReview = cfg.DocReview.Count;
-        DocReviewCard.Visibility = toReview > 0 ? Visibility.Visible : Visibility.Collapsed;
-        DocReviewTitle.Text = toReview == 1 ? "1 rangement à vérifier" : $"{toReview} rangements à vérifier";
+        DocReviewLine.Visibility = toReview > 0 ? Visibility.Visible : Visibility.Collapsed;
+        DocReviewTitle.Text = toReview == 1 ? "1 élément rangé récemment" : $"{toReview} éléments rangés récemment";
 
         if (_planBusy) return;
         _planBusy = true;
@@ -84,19 +86,19 @@ public partial class MainWindow
         int manual = _planManual.Count + _docLeftover.Count;
         int total = planned + manual;
         DocPendingCount.Text = total.ToString();
-        DocPendingLabel.Text = total == 0 ? "rien à ranger" : total == 1 ? "élément à ranger" : "éléments à ranger";
+        DocPendingLabel.Text = total == 0 ? "rien à ranger" : "à ranger";
+        DocSortText.Text = planned > 0 ? "Voir la proposition" : "Choisir où les ranger";
         var parts = _plan.SelectMany(f => f.Items).Concat(_planManual).GroupBy(p => p.Origin)
             .OrderByDescending(g => g.Count())
             .Select(g => g.Key == "Bureau" ? $"{g.Count()} sur le bureau" : $"{g.Count()} dans {g.Key}").ToList();
         int folders = _plan.Count, existing = _plan.Count(f => f.Exists);
         var how = new List<string>();
-        if (planned > 0) how.Add($"{planned} avec un dossier proposé ({Plural(folders, "dossier", "dossiers")}" + (existing > 0 ? $", dont {existing} déjà à vous)" : ")"));
-        if (manual > 0) how.Add($"{manual} à ranger vous-même (aucun dossier évident)");
+        if (planned > 0) how.Add($"Proposition pour {planned} ({Plural(folders, "dossier", "dossiers")}" + (existing > 0 ? $", dont {existing} déjà à vous)" : ")"));
+        if (manual > 0) how.Add($"{manual} sans proposition : vous choisissez le dossier");
         DocPendingDetail.Text = total == 0
             ? "Le bureau et la racine de vos dossiers personnels sont en ordre."
             : string.Join(" · ", parts)
-              + "\n" + string.Join(" · ", how) + ". Vos sous-dossiers ne sont pas touchés."
-              + "\nRéversible : rien n'est supprimé ni renommé, chaque élément peut être remis à sa place.";
+              + "\n" + string.Join(" · ", how) + ".";
         DocSortButton.IsEnabled = total > 0;
         UpdateDocsBadge(total);
     }
@@ -106,7 +108,7 @@ public partial class MainWindow
         Settings.Current.DocPlanSnoozedUntil = DateTime.Now.AddDays(7);
         Settings.Save();
         DocPlanCard.Visibility = Visibility.Collapsed;
-        ShowToast("Plan de rangement remis à plus tard (il reviendra dans 7 jours).");
+        ShowToast("Proposition remise à plus tard : elle reviendra dans 7 jours.");
     }
 
     private void DocPlanOpen_Click(object sender, RoutedEventArgs e) => ShowPlanOverlay();
@@ -206,13 +208,13 @@ public partial class MainWindow
         {
             // File « à ranger vous-même » : aucun cas prévu, Centre PC ne devine pas
             var head = new Grid { Margin = new Thickness(8, _planOrder.Count == 0 ? 6 : 18, 8, 4),
-                                  ToolTip = "Aucun dossier évident : choisissez-en un pour chaque élément, ou laissez-le à sa place. Ce que vous ne traitez pas maintenant attend ici." };
+                                  ToolTip = "Pas de proposition : choisissez un dossier pour chaque élément, ou ne le rangez pas. Ce que vous ne traitez pas maintenant attend ici." };
             head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             head.ColumnDefinitions.Add(new ColumnDefinition());
             var g = new TextBlock { Text = "\uE70F", Style = (Style)FindResource("Glyph"), FontSize = 14, VerticalAlignment = VerticalAlignment.Center,
                                     Margin = new Thickness(30, 0, 8, 0), Foreground = Brushes.Orange };
             head.Children.Add(g);
-            var t = new TextBlock { Text = $"À ranger vous-même  ·  {_planManual.Count}", FontWeight = FontWeights.SemiBold, FontSize = 13, VerticalAlignment = VerticalAlignment.Center };
+            var t = new TextBlock { Text = $"Sans proposition  ·  {_planManual.Count}", FontWeight = FontWeights.SemiBold, FontSize = 13, VerticalAlignment = VerticalAlignment.Center };
             Grid.SetColumn(t, 1); head.Children.Add(t);
             DocPlanItems.Children.Add(head);
             foreach (var it in _planManual)
@@ -236,7 +238,7 @@ public partial class MainWindow
     private FrameworkElement PlanItemRow(DocProposal p)
     {
         var check = new CheckBox { IsChecked = p.Selected, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0),
-                                   ToolTip = "Décochez pour laisser l'élément à sa place" };
+                                   ToolTip = "Décochez pour ne pas ranger cet élément" };
         if (p.IsManual) { check.Visibility = Visibility.Hidden; check.IsHitTestVisible = false; }   // rien à cocher tant qu'aucun dossier n'est choisi
         var thumb = Thumb(p, 32, 48);
         thumb.Margin = new Thickness(0, 0, 10, 0);
@@ -277,12 +279,12 @@ public partial class MainWindow
         }
         else if (p.IsManual)
         {
-            r.dest.Text = p.Keep ? "Reste à sa place" : "Dossier à choisir";
+            r.dest.Text = p.Keep ? "Ne sera pas rangé" : "Dossier à choisir";
             r.row.Opacity = p.Keep ? 0.55 : 1;
         }
         else
         {
-            r.dest.Text = p.Selected ? "→ " + SplitLabel(p.DestinationLabel ?? DocPlanner.FriendlyDir(p.Destination)).name : "Reste à sa place";
+            r.dest.Text = p.Selected ? "→ " + SplitLabel(p.DestinationLabel ?? DocPlanner.FriendlyDir(p.Destination)).name : "Ne sera pas rangé";
             r.row.Opacity = p.Selected ? 1 : 0.55;
         }
         var f = FolderOf(p);
@@ -422,7 +424,7 @@ public partial class MainWindow
         Button ChangeFolder(string text, bool accent)
         {
             var b = accent
-                ? new Button { Style = (Style)FindResource("AccentButton"), Content = text, Padding = new Thickness(14, 6, 14, 6), ToolTip = "Vos dossiers, ceux du plan, ou un nouveau dossier" }
+                ? new Button { Style = (Style)FindResource("AccentButton"), Content = text, Padding = new Thickness(14, 6, 14, 6), ToolTip = "Vos dossiers, ceux de la proposition, ou un nouveau dossier" }
                 : SmallButton("", text, null, tip: "Choisir un autre dossier pour cet élément");
             b.Click += (s, _) => ShowPlanDestinationMenu((Button)s, p);
             return b;
@@ -442,8 +444,8 @@ public partial class MainWindow
             destination = Square("DESTINATION", Big("", Brushes.Orange, 72, 0.85), new UIElement[]
             {
                 Line("Aucun dossier évident", strong: true),
-                Line("Centre PC ne devine pas quand ce n'est pas clair. Choisissez le dossier qui convient, ou laissez l'élément où il est.", size: 12),
-                Actions(ChangeFolder("Choisir un dossier…", true), Act("", "Laisser à sa place", () => Toggle(true), leave))
+                Line("Pas de proposition pour cet élément : choisissez un dossier, ou ne le rangez pas.", size: 12),
+                Actions(ChangeFolder("Autre dossier…", true), Act("", "Ne pas ranger", () => Toggle(true), leave))
             });
         else if (!p.IsManual && p.Selected)
             destination = Square("DESTINATION", Big("", exists ? Brushes.MediumSeaGreen : (Brush)FindResource("Accent")), new UIElement[]
@@ -452,14 +454,14 @@ public partial class MainWindow
                 Line(parent),
                 Line(exists ? "Votre dossier existant" : "Nouveau dossier, créé au moment du rangement", size: 12),
                 Line(string.IsNullOrEmpty(p.Reason) ? null : "Pourquoi : " + p.Reason, size: 12),
-                Actions(ChangeFolder("Changer de dossier…", false), Act("", "Laisser à sa place", () => Toggle(false), leave))
+                Actions(ChangeFolder("Autre dossier…", false), Act("", "Ne pas ranger", () => Toggle(false), leave))
             });
         else
             destination = Square("DESTINATION", Big("", (Brush)FindResource("Text2"), 72, 0.6), new UIElement[]
             {
-                Line("Reste à sa place", strong: true),
+                Line("Ne sera pas rangé", strong: true),
                 Line(p.IsManual ? "Ne vous sera plus proposé." : "Ne sera pas déplacé et ne vous sera plus proposé.", size: 12),
-                Actions(p.IsManual ? Act("", "Ranger plus tard", () => Toggle(true), "L'élément reste dans la file « à ranger vous-même »")
+                Actions(p.IsManual ? Act("", "Ranger quand même", () => Toggle(true), "L'élément revient dans la liste « À ranger »")
                                    : Act("", "Ranger cet élément", () => Toggle(false)))
             });
 
@@ -871,10 +873,10 @@ public partial class MainWindow
         int trash = _plan.Sum(f => f.Items.Count(i => i.Trash)) + _planManual.Count(m => m.Trash);
         int folders = hasItems ? _plan.Count(f => f.Items.Any(i => i.Selected)) : _planSuggested.Count(f => f.Selected);
         var notes = new List<string>();
-        if (left > 0) notes.Add(left == 1 ? "1 élément restera à sa place et ne vous sera plus proposé."
-                                          : $"{left} éléments resteront à leur place et ne vous seront plus proposés.");
-        if (waiting > 0) notes.Add(waiting == 1 ? "1 élément sans dossier reste dans la file « à ranger vous-même »."
-                                                : $"{waiting} éléments sans dossier restent dans la file « à ranger vous-même ».");
+        if (left > 0) notes.Add(left == 1 ? "1 élément ne sera pas rangé et ne vous sera plus proposé."
+                                          : $"{left} éléments ne seront pas rangés et ne vous seront plus proposés.");
+        if (waiting > 0) notes.Add(waiting == 1 ? "1 élément sans proposition reste « À ranger »."
+                                                : $"{waiting} éléments sans proposition restent « À ranger ».");
         if (trash > 0) notes.Insert(0, trash == 1 ? "1 élément ira à la Corbeille de Windows (récupérable)."
                                                   : $"{trash} éléments iront à la Corbeille de Windows (récupérables).");
         if (notes.Count == 0) notes.Add("Vous pourrez vérifier chaque élément juste après.");
@@ -891,7 +893,7 @@ public partial class MainWindow
             IsEnabled = hasItems ? items > 0 || left > 0 || trash > 0 : folders > 0,
             Content = hasItems
                 ? (items > 0 ? $"Ranger {Plural(items, "élément", "éléments")}" + (trash > 0 ? $" · {trash} à la corbeille" : "")
-                   : trash > 0 ? $"Mettre {Plural(trash, "élément", "éléments")} à la corbeille" : "Valider mes choix")
+                   : trash > 0 ? $"Mettre {Plural(trash, "élément", "éléments")} à la corbeille" : "Ranger")
                 : "Créer les dossiers"
         };
         go.Click += async (_, _) => await ApplyPlanAsync();
@@ -929,7 +931,7 @@ public partial class MainWindow
         {
             CloseDocPlan();
             _ = ReloadAsync();
-            ShowToast(trashNote + (declined.Count == 0 ? "" : declined.Count == 1 ? "1 élément laissé à sa place." : $"{declined.Count} éléments laissés à leur place."));
+            ShowToast(trashNote + (declined.Count == 0 ? "" : declined.Count == 1 ? "1 élément non rangé." : $"{declined.Count} éléments non rangés."));
             return;
         }
         DocPlanButtons.IsEnabled = false;
@@ -940,9 +942,10 @@ public partial class MainWindow
             ShowToast(errors.Count == 1 ? "1 élément n'a pas pu être déplacé (fichier ouvert ?) : il reste à sa place."
                                         : $"{errors.Count} éléments n'ont pas pu être déplacés (fichiers ouverts ?) : ils restent à leur place.");
         _ = ReloadAsync();
-        ShowReviewOverlay();
-        if (moved > 0) ShowToast(trashNote + (moved == 1 ? "1 élément rangé. Vérifiez-le : il peut être remis à sa place."
-                                                         : $"{moved} éléments rangés. Vérifiez-les : chacun peut être remis à sa place."));
+        // Pas d'écran de validation imposé : le rangement est fait, la page Documents propose « Revoir ou annuler »
+        CloseDocPlan();
+        if (moved > 0) ShowToast(trashNote + (moved == 1 ? "1 élément rangé. « Annuler » le remet où il était."
+                                                         : $"{moved} éléments rangés. « Annuler » les remet où ils étaient."));
     }
 
     // ------------------------------------------------------------------ vérification
@@ -950,10 +953,10 @@ public partial class MainWindow
     {
         DocPlanSplit.Visibility = Visibility.Collapsed;
         DocPlanScroll.Visibility = Visibility.Visible;
-        DocPlanOverlayTitle.Text = "Vérifiez le rangement";
-        DocPlanOverlayText.Text = "Chaque élément a été déplacé dans le dossier indiqué. Gardez ce qui vous convient ; « Remettre à sa place » le replace exactement où il était.";
+        DocPlanOverlayTitle.Text = "Rangé récemment";
+        DocPlanOverlayText.Text = "Rangé : chaque élément est dans le dossier indiqué. « Annuler » le replace exactement où il était.";
         DocPlanReassurance.ToolTip = null;
-        DocPlanReassurance.Text = "Aucune perte possible : « Remettre à sa place » annule le déplacement, et un élément remis à sa place ne vous sera plus proposé. "
+        DocPlanReassurance.Text = "Rien à valider : sans action de votre part, le rangement est conservé. Un élément annulé ne vous sera plus proposé. "
             + "Vous pouvez aussi terminer la vérification plus tard : ces éléments restent listés sur la page Documents.";
         BuildReviewList();
         DocPlanOverlay.Visibility = Visibility.Visible;
@@ -983,15 +986,12 @@ public partial class MainWindow
             DocPlanList.Children.Add(head);
             foreach (var e in g) DocPlanList.Children.Add(ReviewRow(e));
         }
-        DocPlanSummary.Text = review.Count == 1 ? "1 élément à vérifier." : $"{review.Count} éléments à vérifier.";
+        DocPlanSummary.Text = review.Count == 1 ? "1 élément rangé récemment." : $"{review.Count} éléments rangés récemment.";
         DocPlanButtons.Children.Clear();
-        var later = new Button { Style = (Style)FindResource("BaseButton"), Content = "Terminer plus tard", Margin = new Thickness(0, 0, 10, 0) };
-        later.Click += (_, _) => CloseDocPlan();
-        var back = new Button { Style = (Style)FindResource("BaseButton"), Content = "Tout remettre à sa place", Margin = new Thickness(0, 0, 10, 0) };
+        var back = new Button { Style = (Style)FindResource("BaseButton"), Content = "Tout annuler", Margin = new Thickness(0, 0, 10, 0), ToolTip = "Chaque élément retourne exactement où il était" };
         back.Click += (_, _) => RejectMany(Settings.Current.DocReview.ToList());
-        var ok = new Button { Style = (Style)FindResource("AccentButton"), Content = "Tout valider" };
+        var ok = new Button { Style = (Style)FindResource("AccentButton"), Content = "Tout est bon" };
         ok.Click += (_, _) => { foreach (var x in Settings.Current.DocReview.ToList()) DocPlanner.Accept(x); BuildReviewList(); };
-        DocPlanButtons.Children.Add(later);
         DocPlanButtons.Children.Add(back);
         DocPlanButtons.Children.Add(ok);
     }
@@ -1012,7 +1012,7 @@ public partial class MainWindow
 
         var acts = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
         var keep = SmallButton("", "Garder", (_, _) => { DocPlanner.Accept(e); BuildReviewList(); }, tip: "Le rangement vous convient");
-        var back = SmallButton("", "Remettre à sa place", (_, _) => RejectMany(new List<DocReviewEntry> { e }),
+        var back = SmallButton("", "Annuler", (_, _) => RejectMany(new List<DocReviewEntry> { e }),
                                tip: "Replace l'élément à son emplacement d'origine ; il ne vous sera plus proposé");
         var other = SmallButton("", "Autre dossier…", null, tip: "Choisir un autre dossier");
         other.Click += (s, _) => ShowMoveElsewhereMenu((Button)s, e);
@@ -1060,13 +1060,6 @@ public partial class MainWindow
         if (err != null) ShowToast("Déplacement impossible : " + err);
         else ShowToast($"« {e.Name} » rangé dans {DocPlanner.FriendlyDir(folder)}.");
         BuildReviewList();
-    }
-
-    private void DocReviewAcceptAll_Click(object sender, RoutedEventArgs e)
-    {
-        foreach (var x in Settings.Current.DocReview.ToList()) DocPlanner.Accept(x);
-        ShowToast("Rangement validé.");
-        RefreshDocuments();
     }
 
     /// <summary>Clavier : Échap ferme la fenêtre du plan (la vérification reste disponible).</summary>

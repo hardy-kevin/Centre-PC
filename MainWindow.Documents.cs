@@ -22,7 +22,7 @@ public partial class MainWindow
         {
             var pending = DocumentLibrary.Pending();
             DocPendingCount.Text = pending.Count.ToString();
-            DocPendingLabel.Text = pending.Count == 1 ? "élément à ranger" : "éléments à ranger";
+            DocPendingLabel.Text = "à ranger";
             DocPendingDetail.Text = "Analyse en cours…";
             DocSortButton.IsEnabled = pending.Count > 0;
         }

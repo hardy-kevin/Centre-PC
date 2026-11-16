@@ -131,7 +131,7 @@ public sealed class Sensors : IDisposable
         }
 
         // Programmes de surveillance ouverts par l'utilisateur : température du processeur et ventilateurs
-        if (!External.FromHwinfo(s)) External.FromLibre(s);
+        if (!External.FromHwinfo(s) && !External.FromLibre(s)) External.FromLibreHttp(s);
         // HWiNFO : complète la carte graphique correspondante (point chaud, consommation en watts, ventilateur, charge)
         if (s.ExternalGpu is { } x)
         {
@@ -152,6 +152,15 @@ public sealed class Sensors : IDisposable
 
     /// <summary>Ce qui est disponible maintenant (pour l'annoncer avant le test).</summary>
     public static string MonitorRunning() => External.Running();
+
+    /// <summary>Mesures tirées d'une réponse data.json de LibreHardwareMonitor (température du processeur, ventilateurs, puissance).</summary>
+    public static SensorSnapshot ReadLibreJson(string json)
+    {
+        var s = new SensorSnapshot();
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        External.FromLibreJson(doc.RootElement, s);
+        return s;
+    }
 
     public void Dispose()
     {
@@ -453,6 +462,7 @@ public sealed class Sensors : IDisposable
                 if (s.Get().Count > 0) return "LibreHardwareMonitor";
             }
             catch { }
+            using (var d = LibreData()) if (d != null) return "LibreHardwareMonitor";
             return null;
         }
 
@@ -566,6 +576,93 @@ public sealed class Sensors : IDisposable
             v.ReadArray(offset, b, 0, length);
             int end = Array.IndexOf(b, (byte)0);
             return Encoding.Latin1.GetString(b, 0, end < 0 ? length : end).Trim();
+        }
+
+        /// <summary>Port local du serveur de mesures de LibreHardwareMonitor quand Centre PC le gère (sinon son port habituel, 8085).</summary>
+        public const int ManagedPort = 48085;
+        private static readonly System.Net.Http.HttpClient LibreHttp = new() { Timeout = TimeSpan.FromMilliseconds(900) };
+        private static int _librePort;
+
+        /// <summary>
+        /// LibreHardwareMonitor 0.9.5 et suivants ne publient plus leurs mesures dans WMI : elles sont lues sur son serveur
+        /// local (data.json), uniquement sur cette machine (127.0.0.1) et seulement s'il est ouvert.
+        /// </summary>
+        private static System.Text.Json.JsonDocument LibreData()
+        {
+            var running = System.Diagnostics.Process.GetProcessesByName("LibreHardwareMonitor");
+            foreach (var p in running) p.Dispose();
+            if (running.Length == 0) { _librePort = 0; return null; }
+            foreach (var port in _librePort != 0 ? new[] { _librePort } : new[] { ManagedPort, 8085 })
+                try
+                {
+                    using var rq = new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Get, $"http://127.0.0.1:{port}/data.json");
+                    using var rs = LibreHttp.Send(rq);
+                    if (!rs.IsSuccessStatusCode) continue;
+                    using var stream = rs.Content.ReadAsStream();
+                    var doc = System.Text.Json.JsonDocument.Parse(stream);
+                    _librePort = port;
+                    return doc;
+                }
+                catch { }
+            _librePort = 0;
+            return null;
+        }
+
+        public static bool FromLibreHttp(SensorSnapshot s)
+        {
+            try
+            {
+                using var doc = LibreData();
+                return doc != null && FromLibreJson(doc.RootElement, s);
+            }
+            catch { return false; }
+        }
+
+        /// <summary>Analyse de l'arbre data.json de LibreHardwareMonitor (versions avec ou sans « SensorId » / « Type »).</summary>
+        public static bool FromLibreJson(System.Text.Json.JsonElement root, SensorSnapshot s)
+        {
+            try
+            {
+                double? cpu = null; string cpuLabel = null; int cpuRank = 99;
+                bool any = false;
+                static string Str(System.Text.Json.JsonElement n, string name) =>
+                    n.ValueKind == System.Text.Json.JsonValueKind.Object && n.TryGetProperty(name, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.String ? v.GetString() : "";
+                void Walk(System.Text.Json.JsonElement n, string hw, string group)
+                {
+                    var text = Str(n, "Text"); var img = Str(n, "ImageURL").ToLowerInvariant();
+                    bool hasChildren = n.TryGetProperty("Children", out var kids) && kids.ValueKind == System.Text.Json.JsonValueKind.Array && kids.GetArrayLength() > 0;
+                    if (hasChildren)
+                    {
+                        // Matériel (icône cpu, nvidia, mainboard…) ou groupe de mesures (« Temperatures », « Fans », « Powers »)
+                        if (text is "Temperatures" or "Fans" or "Powers" or "Voltages" or "Clocks" or "Load" or "Controls" or "Data" or "Levels" or "Throughput" or "Currents" or "Factors" or "Frequencies") group = text;
+                        else if (img.Length > 0 && !img.Contains("transparent") && !img.Contains("computer")) hw = System.IO.Path.GetFileNameWithoutExtension(img);
+                        foreach (var k in kids.EnumerateArray()) Walk(k, hw, group);
+                        return;
+                    }
+                    var raw = Str(n, "Value");
+                    var m = System.Text.RegularExpressions.Regex.Match(raw, @"-?\d+(?:[.,]\d+)?");
+                    if (!m.Success) return;
+                    double value = double.Parse(m.Value.Replace(',', '.'), System.Globalization.CultureInfo.InvariantCulture);
+                    var id = Str(n, "SensorId");
+                    var type = Str(n, "Type");
+                    if (type.Length == 0) type = group switch { "Temperatures" => "Temperature", "Fans" => "Fan", "Powers" => "Power", _ => "" };
+                    bool isCpu = id.StartsWith("/intelcpu", StringComparison.OrdinalIgnoreCase) || id.StartsWith("/amdcpu", StringComparison.OrdinalIgnoreCase) || (id.Length == 0 && hw == "cpu");
+                    bool isGpu = id.Contains("gpu", StringComparison.OrdinalIgnoreCase) || hw is "nvidia" or "ati" or "amd" or "intel";
+                    any = true;
+                    if (type == "Temperature" && isCpu)
+                    {
+                        int rank = CpuRank(text.StartsWith("Core (Tctl", StringComparison.OrdinalIgnoreCase) ? "tctl" : "cpu " + text, "cpu");
+                        if (text.Equals("CPU Package", StringComparison.OrdinalIgnoreCase) || text.Contains("Tctl")) rank = 0;
+                        if (rank < cpuRank && value > 0 && value < 130) { cpu = value; cpuRank = rank; cpuLabel = text; }
+                    }
+                    else if (type == "Fan" && !isGpu && value >= 0) s.Fans.Add(new FanReading(text, value));
+                    else if (type == "Power" && isCpu && text.Contains("Package", StringComparison.OrdinalIgnoreCase)) s.CpuPowerW = value;
+                }
+                Walk(root, "", "");
+                if (cpu != null) { s.CpuTemp = cpu; s.CpuTempSource = $"LibreHardwareMonitor ({cpuLabel})"; }
+                return any;
+            }
+            catch { return false; }
         }
 
         /// <summary>LibreHardwareMonitor ouvert : ses capteurs sont publiés dans WMI (root\LibreHardwareMonitor).</summary>

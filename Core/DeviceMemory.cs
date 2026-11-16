@@ -172,7 +172,7 @@ public static partial class DeviceHealth
                                                    5200, 5600, 6000, 6200, 6400, 6600, 6800, 7000, 7200, 7600, 8000, 8200, 8400 };
 
     /// <summary>Vitesse annoncée dans la référence (« CMK16GX4M2B3200C16 » → 3200, « F5-6000J3038F16G » → 6000), sinon 0.</summary>
-    internal static long RatedFromPart(string part)
+    public static long RatedFromPart(string part)
     {
         if (string.IsNullOrWhiteSpace(part)) return 0;
         foreach (Match m in Regex.Matches(part, @"(?<!\d)(\d{4})(?!\d)"))

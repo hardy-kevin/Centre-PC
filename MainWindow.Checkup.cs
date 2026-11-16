@@ -34,7 +34,7 @@ public partial class MainWindow
     }
 
     private CkPlan _ckPlan = CkPlan.For("Standard");
-    private string _ckCustomer, _ckTechnician;
+    private string _ckCustomer, _ckTechnician, _ckContact;
     private CancellationTokenSource _ckCts;
 
     // ================================================================== préparation
@@ -84,7 +84,7 @@ public partial class MainWindow
         DeviceTestHost.Children.Add(Choices(new List<(string, object)> { ("10 min", 10), ("30 min", 30), ("1 heure", 60), ("2 heures", 120) }, p.MemMin, v => { p.MemMin = (int)v; OpenDeviceTest("checkup"); }));
         DeviceTestHost.Children.Add(TestText("Durée de l'endurance :", 12.5));
         DeviceTestHost.Children.Add(Choices(new List<(string, object)> { ("5 min", 5), ("10 min", 10), ("20 min", 20), ("30 min", 30) }, p.EnduranceMin, v => { p.EnduranceMin = (int)v; Refresh(); }));
-        var managed = Check("Température du processeur et ventilateurs avec HWiNFO (logiciel tiers, gratuit pour un usage personnel ; j'accepte sa licence)", _benchManaged, v => _benchManaged = v);
+        var managed = Check("Température du processeur et ventilateurs avec HWiNFO (logiciel tiers, gratuit pour un usage personnel ; j'accepte sa licence), ou à défaut LibreHardwareMonitor (libre)", _benchManaged, v => _benchManaged = v);
         managed.Margin = new Thickness(0, 4, 0, 10);
         DeviceTestHost.Children.Add(managed);
 
@@ -101,7 +101,11 @@ public partial class MainWindow
             return t;
         }
         Field("Client ou machine (facultatif)", _ckCustomer, v => _ckCustomer = v);
-        Field("Réalisé par (facultatif)", _ckTechnician, v => _ckTechnician = v);
+        // Mode technicien : nom et coordonnées mémorisés d'un bilan à l'autre (le client, lui, change à chaque machine)
+        _ckTechnician ??= Settings.Current.TechnicianName;
+        _ckContact ??= Settings.Current.TechnicianContact;
+        Field("Réalisé par (facultatif, mémorisé)", _ckTechnician, v => _ckTechnician = v);
+        Field("Coordonnées sur le rapport (facultatif, mémorisé)", _ckContact, v => _ckContact = v);
         DeviceTestHost.Children.Add(who);
         Refresh();
         DeviceTestHost.Children.Add(estimate);
@@ -125,6 +129,7 @@ public partial class MainWindow
                 }
                 DeviceTestHost.Children.Add(TestButton("", "Ouvrir le dossier des bilans", () => OpenTarget(MachineSnapshot.Folder)));
             }
+            BuildCompareSection();
         }
         catch { }
     }
@@ -132,6 +137,12 @@ public partial class MainWindow
     private void StartCheckup()
     {
         _monitorWatch?.Stop();
+        if ((_ckTechnician ?? "") != (Settings.Current.TechnicianName ?? "") || (_ckContact ?? "") != (Settings.Current.TechnicianContact ?? ""))
+        {
+            Settings.Current.TechnicianName = string.IsNullOrWhiteSpace(_ckTechnician) ? null : _ckTechnician.Trim();
+            Settings.Current.TechnicianContact = string.IsNullOrWhiteSpace(_ckContact) ? null : _ckContact.Trim();
+            Settings.Save();
+        }
         var plan = _ckPlan;
         if (_benchManaged && _hwinfo == null && Sensors.MonitorRunning() == null) { _ = PrepareHwinfoAsync(() => _ = RunCheckupAsync(plan)); return; }
         _ = RunCheckupAsync(plan);
@@ -163,7 +174,7 @@ public partial class MainWindow
         _ckCts?.Cancel();
         var cts = _ckCts = new CancellationTokenSource();
         var ct = cts.Token;
-        var report = new CheckupReport { Level = plan.Level, Customer = _ckCustomer, Technician = _ckTechnician };
+        var report = new CheckupReport { Level = plan.Level, Customer = _ckCustomer, Technician = _ckTechnician, Contact = _ckContact };
         var snap = new MachineSnapshot { Date = report.Start, Level = plan.Level, Machine = report.Machine };
         var cores = CpuTopology.Cores();
         var adapter = Gpu.Adapters().FirstOrDefault(g => g.Luid == _benchGpuLuid) ?? Gpu.Adapters().FirstOrDefault();
@@ -795,8 +806,45 @@ public partial class MainWindow
             File.WriteAllText(htmlPath, report.Html(version), new System.Text.UTF8Encoding(true));
         }
         catch (Exception ex) { Log.Error("Rapport du bilan", ex); }
+        _ = UpdateCheckupTileAsync();
         if (_testKind == "checkup") ShowCheckupResult(report, htmlPath);
         else if (htmlPath != null) ShowToast("Bilan terminé : rapport enregistré dans Documents\\Centre PC\\Bilans.");
+    }
+
+    /// <summary>Comparer deux bilans au choix (et pas seulement le dernier avec le précédent) : rapport ouvert dans le navigateur.</summary>
+    private void BuildCompareSection()
+    {
+        var snaps = MachineSnapshot.All();
+        if (snaps.Count < 2) return;
+        DeviceTestHost.Children.Add(Section("Comparer deux bilans"));
+        DeviceTestHost.Children.Add(TestText("Ce qui a changé entre deux dates : Windows, pilotes, applications, mesures.", 12.5));
+        string Label(MachineSnapshot s) => $"{s.Date:d MMM yyyy HH:mm} · {s.Level}" + (string.Equals(s.Machine, Environment.MachineName, StringComparison.OrdinalIgnoreCase) ? "" : $" · {s.Machine}");
+        var row = new WrapPanel();
+        ComboBox Pick(int selected)
+        {
+            var c = new ComboBox { Width = 250, Margin = new Thickness(0, 0, 10, 10) };
+            foreach (var s in snaps) c.Items.Add(new ComboBoxItem { Content = Label(s), Tag = s });
+            c.SelectedIndex = selected;
+            row.Children.Add(c);
+            return c;
+        }
+        var first = Pick(snaps.Count - 1);   // le plus ancien
+        var second = Pick(0);                // le plus récent
+        row.Children.Add(TestButton("\uE8F4", "Comparer", () =>
+        {
+            if ((first.SelectedItem as ComboBoxItem)?.Tag is not MachineSnapshot a || (second.SelectedItem as ComboBoxItem)?.Tag is not MachineSnapshot b) return;
+            if (ReferenceEquals(a, b)) { ShowToast("Choisissez deux bilans différents."); return; }
+            try
+            {
+                var report = MachineSnapshot.Compare(a, b);
+                var (old, now) = a.Date <= b.Date ? (a, b) : (b, a);
+                var path = Path.Combine(MachineSnapshot.Folder, $"Comparaison {now.Machine} {old.Date:yyyy-MM-dd HH-mm} - {now.Date:yyyy-MM-dd HH-mm}.html");
+                File.WriteAllText(path, report.Html(typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? ""), new System.Text.UTF8Encoding(true));
+                OpenTarget(path);
+            }
+            catch (Exception ex) { Log.Error("Comparaison de bilans", ex); ShowToast("La comparaison n'a pas pu être créée."); }
+        }));
+        DeviceTestHost.Children.Add(row);
     }
 
     // ================================================================== résultat
@@ -812,6 +860,19 @@ public partial class MainWindow
         {
             buttons.Children.Add(TestButton("", "Ouvrir le rapport complet", () => OpenTarget(htmlPath), accent: true));
             buttons.Children.Add(TestButton("", "Dossier des bilans", () => OpenTarget(MachineSnapshot.Folder)));
+        }
+        if (htmlPath != null)
+        {
+            Button pdfButton = null;
+            pdfButton = TestButton("\uEA90", "Enregistrer en PDF", async () =>
+            {
+                pdfButton.IsEnabled = false;
+                var pdf = await ReportPdf.ExportAsync(htmlPath);
+                pdfButton.IsEnabled = true;
+                if (pdf != null) { ShowToast("PDF enregistré dans le dossier des bilans."); DocumentLibrary.ShowInExplorer(pdf); }
+                else ShowToast("PDF impossible à créer ici : ouvrez le rapport, puis « Imprimer / PDF ».");
+            });
+            buttons.Children.Add(pdfButton);
         }
         buttons.Children.Add(TestButton("", "Copier le résumé client", () =>
         {

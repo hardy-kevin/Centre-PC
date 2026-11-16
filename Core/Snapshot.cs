@@ -68,6 +68,39 @@ public sealed class MachineSnapshot
         return null;
     }
 
+    /// <summary>Tous les instantanés enregistrés, du plus récent au plus ancien (fichiers illisibles ignorés).</summary>
+    public static List<MachineSnapshot> All()
+    {
+        var list = new List<MachineSnapshot>();
+        try
+        {
+            foreach (var f in Directory.EnumerateFiles(Folder, "Instantané *.json"))
+                try { if (JsonSerializer.Deserialize<MachineSnapshot>(File.ReadAllText(f)) is { } s) list.Add(s); } catch { }
+        }
+        catch (Exception ex) { Log.Error("Instantanés", ex); }
+        return list.OrderByDescending(s => s.Date).ToList();
+    }
+
+    /// <summary>
+    /// Rapport de comparaison entre deux instantanés au choix (le plus ancien sert de référence, quel que soit l'ordre donné) :
+    /// changements d'installation, pilotes, mises à jour et évolution des mesures.
+    /// </summary>
+    public static CheckupReport Compare(MachineSnapshot a, MachineSnapshot b)
+    {
+        var (old, now) = a.Date <= b.Date ? (a, b) : (b, a);
+        var report = new CheckupReport
+        {
+            Machine = now.Machine, Level = "Comparaison", End = DateTime.Now,
+            Title = $"Comparaison de deux bilans — {now.Machine}",
+            Subtitle = $"Du {old.Date:d MMMM yyyy à HH:mm} (niveau {old.Level}) au {now.Date:d MMMM yyyy à HH:mm} (niveau {now.Level})"
+        };
+        if (!string.Equals(old.Machine, now.Machine, StringComparison.OrdinalIgnoreCase))
+            report.Add(DeviceStatus.Warning, "Machines", "Ces deux bilans ne viennent pas de la même machine : la comparaison n'a de sens que pour l'installation logicielle.",
+                       $"{old.Machine} → {now.Machine}");
+        now.CompareTo(old, report);
+        return report;
+    }
+
     // ------------------------------------------------------------------ relevé de l'installation
     /// <summary>Applications (registre « Programmes et fonctionnalités »), pilotes (WMI) et mises à jour de Windows.</summary>
     public void CaptureInstallation()

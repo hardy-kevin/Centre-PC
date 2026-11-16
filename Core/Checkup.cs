@@ -22,6 +22,11 @@ public sealed class CheckupReport
     public string Level { get; set; }
     public string Customer { get; set; }
     public string Technician { get; set; }
+    /// <summary>Coordonnées du technicien (téléphone, e-mail, société) reprises en tête du rapport.</summary>
+    public string Contact { get; set; }
+    /// <summary>Titre et sous-titre propres (comparaison de deux bilans) ; sinon ceux d'un bilan.</summary>
+    public string Title { get; set; }
+    public string Subtitle { get; set; }
     public string Machine { get; set; } = Environment.MachineName;
     public List<(string Section, List<(string Key, string Value)> Rows)> Inventory { get; } = new();
     public List<(DateTime Time, string Step, string Text)> Operations { get; } = new();
@@ -69,7 +74,7 @@ public sealed class CheckupReport
         static string E(string s) => WebUtility.HtmlEncode(s ?? "");
         string color(DeviceStatus l) => l switch { DeviceStatus.Problem => "#dc2626", DeviceStatus.Warning => "#d97706", DeviceStatus.Info => "#2563eb", _ => "#059669" };
         var sb = new StringBuilder();
-        sb.Append("<!DOCTYPE html><html lang=\"fr\"><head><meta charset=\"utf-8\"><title>").Append(E($"Bilan {Machine} {Start:yyyy-MM-dd}")).Append("</title><style>");
+        sb.Append("<!DOCTYPE html><html lang=\"fr\"><head><meta charset=\"utf-8\"><title>").Append(E(Title ?? $"Bilan {Machine} {Start:yyyy-MM-dd}")).Append("</title><style>");
         sb.Append(@"*{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .kf{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin:8px 0 6px}.kf div{border:1px solid #e5e7eb;border-radius:10px;padding:8px 12px}
 .kf b{display:block;font-size:17px}.kf span{color:#6b7280;font-size:12px}h4{margin:16px 0 4px;font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:#6b7280}
@@ -86,12 +91,14 @@ th{background:#f9fafb;font-weight:600}td.k{width:34%;color:#4b5563}.ops td:first
         sb.Append("</style></head><body>");
         sb.Append("<div class=\"bar\"><button onclick=\"document.body.classList.remove('client')\">Version technique</button>")
           .Append("<button onclick=\"document.body.classList.add('client')\">Version client</button><button onclick=\"print()\">Imprimer / PDF</button></div>");
-        sb.Append("<h1>Bilan de la machine ").Append(E(Machine)).Append("</h1><div class=\"meta\">")
-          .Append(E($"{Start:dddd d MMMM yyyy}, de {Start:HH:mm} à {End:HH:mm} ({(End - Start).TotalMinutes:0} min) · niveau {Level}"));
+        sb.Append("<h1>").Append(E(Title ?? "Bilan de la machine " + Machine)).Append("</h1><div class=\"meta\">")
+          .Append(E(Subtitle ?? $"{Start:dddd d MMMM yyyy}, de {Start:HH:mm} à {End:HH:mm} ({(End - Start).TotalMinutes:0} min) · niveau {Level}"));
         if (!string.IsNullOrWhiteSpace(Customer)) sb.Append(" · client : ").Append(E(Customer));
         if (!string.IsNullOrWhiteSpace(Technician)) sb.Append(" · réalisé par : ").Append(E(Technician));
+        if (!string.IsNullOrWhiteSpace(Contact)) sb.Append(" · ").Append(E(Contact));
         sb.Append("</div>");
-        sb.Append("<div class=\"verdict\" style=\"background:").Append(color(Worst == DeviceStatus.Info ? DeviceStatus.Ok : Worst)).Append("\">").Append(E(VerdictTitle)).Append("</div>");
+        // Une comparaison ne juge pas la machine : pas de verdict, seulement ce qui a changé
+        if (Title == null) sb.Append("<div class=\"verdict\" style=\"background:").Append(color(Worst == DeviceStatus.Info ? DeviceStatus.Ok : Worst)).Append("\">").Append(E(VerdictTitle)).Append("</div>");
 
         // Chiffres clés
         if (KeyFigures.Count > 0)

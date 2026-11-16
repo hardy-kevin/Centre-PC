@@ -1,0 +1,3 @@
+# Le catalogue signé doit rester à l'octet près tel qu'il a été signé
+Catalogue/catalogue.json -text
+Catalogue/catalogue.json.sig -text

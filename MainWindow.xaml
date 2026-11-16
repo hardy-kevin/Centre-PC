@@ -310,7 +310,7 @@
                     <ScrollViewer x:Name="PageDesktop" Grid.Row="1" Visibility="Collapsed" VerticalScrollBarVisibility="Auto" Padding="40,0,40,28">
                         <StackPanel>
                             <TextBlock Text="Bureau" Style="{StaticResource PageTitle}"/>
-                            <TextBlock x:Name="DeskHint" Text="Rangez votre bureau en un clic. Vous pouvez rétablir l'état initial à tout moment." Style="{StaticResource Subtle}" Margin="0,4,0,20"/>
+                            <TextBlock x:Name="DeskHint" Text="Vos icônes ne sont pas supprimées : rangées, elles restent accessibles dans Applications et reviennent en un clic." Style="{StaticResource Subtle}" Margin="0,4,0,20"/>
 
                             <Border Background="{StaticResource HeroGradient}" CornerRadius="18" Padding="30,26" BorderBrush="#3A2F7A" BorderThickness="1">
                                 <Grid>
@@ -327,7 +327,7 @@
                                             <Border Width="1" Background="#33FFFFFF" Margin="32,6"/>
                                             <StackPanel>
                                                 <TextBlock x:Name="StoredCount" Text="–" FontFamily="{StaticResource DisplayFont}" FontSize="44" FontWeight="SemiBold"/>
-                                                <TextBlock x:Name="StoredLabel" Text="rangées dans Centre PC" Style="{StaticResource Subtle}"/>
+                                                <TextBlock x:Name="StoredLabel" Text="rangées (visibles dans Applications)" Style="{StaticResource Subtle}"/>
                                             </StackPanel>
                                         </StackPanel>
                                     </StackPanel>
@@ -341,7 +341,7 @@
                                         <Button Style="{StaticResource BaseButton}" Click="RestoreAll_Click" Margin="0,10,0,0">
                                             <StackPanel Orientation="Horizontal">
                                                 <TextBlock Text="&#xE7A7;" Style="{StaticResource Glyph}" FontSize="14"/>
-                                                <TextBlock Text="Tout remettre sur le bureau" Margin="10,0,0,0"/>
+                                                <TextBlock Text="Tout remettre" Margin="10,0,0,0"/>
                                             </StackPanel>
                                         </Button>
                                     </StackPanel>
@@ -362,18 +362,18 @@
                                                 HorizontalAlignment="Right" Click="DeskOptionsToggle_Click"/>
                                     </Grid>
                                     <StackPanel x:Name="DeskOptionsPanel" Visibility="Collapsed" Margin="0,18,0,4">
-                                        <TextBlock Text="EMPLACEMENT DES ICÔNES RANGÉES" Foreground="{StaticResource Text2}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,10"/>
+                                        <TextBlock Text="OÙ RANGER ?" Foreground="{StaticResource Text2}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,10"/>
                                         <WrapPanel>
                                             <RadioButton x:Name="ModeAppRadio" Style="{StaticResource Chip}" GroupName="tidymode" Checked="TidyMode_Checked" Tag="app">
                                                 <StackPanel Orientation="Horizontal">
                                                     <TextBlock Text="&#xE71D;" Style="{StaticResource Glyph}" FontSize="12"/>
-                                                    <TextBlock Text="Dans Centre PC (bureau vide)" Margin="8,0,0,0"/>
+                                                    <TextBlock Text="Dans Centre PC : le bureau reste vide (recommandé)" Margin="8,0,0,0"/>
                                                 </StackPanel>
                                             </RadioButton>
                                             <RadioButton x:Name="ModeFoldersRadio" Style="{StaticResource Chip}" GroupName="tidymode" Checked="TidyMode_Checked" Tag="folders">
                                                 <StackPanel Orientation="Horizontal">
                                                     <TextBlock Text="&#xE8B7;" Style="{StaticResource Glyph}" FontSize="12"/>
-                                                    <TextBlock Text="Dans des dossiers de catégorie sur le bureau" Margin="8,0,0,0"/>
+                                                    <TextBlock Text="Dans des dossiers par catégorie, sur le bureau" Margin="8,0,0,0"/>
                                                 </StackPanel>
                                             </RadioButton>
                                         </WrapPanel>
@@ -397,13 +397,13 @@
                                                 <Button x:Name="ApplyStyleButton" Style="{StaticResource AccentButton}" Click="ApplyStyle_Click" Margin="0,0,10,0">
                                                     <StackPanel Orientation="Horizontal">
                                                         <TextBlock Text="&#xE73E;" Style="{StaticResource Glyph}" FontSize="14"/>
-                                                        <TextBlock Text="Appliquer" Margin="10,0,0,0"/>
+                                                        <TextBlock Text="Icônes aux couleurs des catégories" Margin="10,0,0,0"/>
                                                     </StackPanel>
                                                 </Button>
                                                 <Button x:Name="RevertStyleButton" Style="{StaticResource BaseButton}" Click="RevertStyle_Click">
                                                     <StackPanel Orientation="Horizontal">
                                                         <TextBlock Text="&#xE7A7;" Style="{StaticResource Glyph}" FontSize="14"/>
-                                                        <TextBlock Text="Icônes d'origine" Margin="10,0,0,0"/>
+                                                        <TextBlock Text="Revenir aux icônes d'origine" Margin="10,0,0,0"/>
                                                     </StackPanel>
                                                 </Button>
                                             </WrapPanel>
@@ -435,7 +435,7 @@
                                                 ToolTip="Dossier où Centre PC conserve les raccourcis rangés">
                                             <StackPanel Orientation="Horizontal">
                                                 <TextBlock Text="&#xE838;" Style="{StaticResource Glyph}" FontSize="13"/>
-                                                <TextBlock Text="Ouvrir le dossier des raccourcis rangés" Margin="8,0,0,0"/>
+                                                <TextBlock Text="Voir où sont conservées les icônes rangées" Margin="8,0,0,0"/>
                                             </StackPanel>
                                         </Button>
                                     </StackPanel>
@@ -448,12 +448,12 @@
                                     <TextBlock Text="&#xE7F4;" Style="{StaticResource Glyph}" FontSize="14" Foreground="White"/>
                                 </Border>
                                 <TextBlock Text="Sur le bureau" Style="{StaticResource SectionTitle}" Margin="12,0,0,0" VerticalAlignment="Center"/>
-                                <TextBlock Text="Clic droit sur une icône pour la conserver ou la ranger" Style="{StaticResource Subtle}" Margin="14,0,0,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="Clic droit sur une icône : la garder sur le bureau ou la ranger" Style="{StaticResource Subtle}" Margin="14,0,0,0" VerticalAlignment="Center"/>
                             </StackPanel>
                             <Border Background="{StaticResource DesktopGradient}" CornerRadius="16" Padding="16,16,8,8" MinHeight="130" BorderBrush="{StaticResource Line}" BorderThickness="1">
                                 <Grid>
                                     <ItemsControl x:Name="DeskList" ItemTemplate="{StaticResource TileTemplate}" ItemsPanel="{StaticResource WrapPanelTemplate}"/>
-                                    <TextBlock x:Name="DeskEmpty" Text="Votre bureau est rangé." Style="{StaticResource Subtle}" FontSize="14"
+                                    <TextBlock x:Name="DeskEmpty" Text="Votre bureau est net." Style="{StaticResource Subtle}" FontSize="14"
                                                HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed"/>
                                 </Grid>
                             </Border>
@@ -503,7 +503,7 @@
                     <ScrollViewer x:Name="PageDocuments" Grid.Row="1" Visibility="Collapsed" VerticalScrollBarVisibility="Auto" Padding="40,0,40,28">
                         <StackPanel>
                             <TextBlock Text="Documents" Style="{StaticResource PageTitle}"/>
-                            <TextBlock Text="Vos fichiers sont classés dans les dossiers Windows (Documents, Images, Musique, Vidéos) et dans vos propres sous-dossiers. Ils y restent même sans Centre PC."
+                            <TextBlock Text="Centre PC range vos fichiers dans Documents, Images, Musique et Vidéos. Rien n'est supprimé, tout s'annule."
                                        Style="{StaticResource Subtle}" TextWrapping="Wrap" Margin="0,4,0,20"/>
 
                             <Border Background="{StaticResource HeroGradient}" CornerRadius="18" Padding="26,18" BorderBrush="#3A2F7A" BorderThickness="1">
@@ -519,12 +519,18 @@
                                             <TextBlock x:Name="DocPendingLabel" Text="éléments à ranger" FontSize="17" FontWeight="SemiBold" Margin="10,0,0,6" VerticalAlignment="Bottom"/>
                                         </StackPanel>
                                         <TextBlock x:Name="DocPendingDetail" Style="{StaticResource Subtle}" FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                                        <!-- Derniers rangements : annulables, sans validation à donner -->
+                                        <StackPanel x:Name="DocReviewLine" Orientation="Horizontal" Margin="0,10,0,0" Visibility="Collapsed">
+                                            <TextBlock Text="&#xE73E;" Style="{StaticResource Glyph}" FontSize="12" Foreground="MediumSeaGreen" VerticalAlignment="Center"/>
+                                            <TextBlock x:Name="DocReviewTitle" FontSize="12.5" Margin="8,0,12,0" VerticalAlignment="Center"/>
+                                            <Button Style="{StaticResource BaseButton}" Content="Revoir ou annuler" Click="DocReviewOpen_Click" Padding="10,4" FontSize="12"/>
+                                        </StackPanel>
                                     </StackPanel>
                                     <StackPanel Grid.Column="1" VerticalAlignment="Center" Width="270">
                                         <Button x:Name="DocSortButton" Style="{StaticResource AccentButton}" Click="DocSort_Click" Padding="18,12">
                                             <StackPanel Orientation="Horizontal">
                                                 <TextBlock Text="&#xE8B7;" Style="{StaticResource Glyph}" FontSize="15"/>
-                                                <TextBlock Text="Ranger mes fichiers" Margin="10,0,0,0"/>
+                                                <TextBlock x:Name="DocSortText" Text="Voir la proposition" Margin="10,0,0,0"/>
                                             </StackPanel>
                                         </Button>
                                         <Button Style="{StaticResource BaseButton}" Click="DocAddExisting_Click" Margin="0,10,0,0"
@@ -538,37 +544,18 @@
                                 </Grid>
                             </Border>
 
-                            <!-- Vérification des rangements effectués (réversibles) -->
-                            <Border x:Name="DocReviewCard" Style="{StaticResource Card}" Margin="0,16,0,0" Visibility="Collapsed" BorderBrush="#3A2F7A" BorderThickness="1">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                    </Grid.ColumnDefinitions>
-                                    <StackPanel>
-                                        <TextBlock x:Name="DocReviewTitle" Style="{StaticResource SectionTitle}"/>
-                                        <TextBlock Style="{StaticResource Subtle}" TextWrapping="Wrap" Margin="0,6,0,0"
-                                                   Text="Validez ce qui vous convient. « Remettre à sa place » annule le déplacement : l'élément retrouve son emplacement d'origine et ne vous sera plus proposé."/>
-                                    </StackPanel>
-                                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
-                                        <Button Style="{StaticResource BaseButton}" Content="Tout valider" Click="DocReviewAcceptAll_Click" Margin="0,0,10,0"/>
-                                        <Button Style="{StaticResource AccentButton}" Content="Vérifier" Click="DocReviewOpen_Click"/>
-                                    </StackPanel>
-                                </Grid>
-                            </Border>
-
-                            <!-- Plan de rangement : arborescence proposée et rangement des éléments non rangés -->
+                            <!-- Arborescence proposée quand rien n'est à ranger -->
                             <Border x:Name="DocPlanCard" Style="{StaticResource Card}" Margin="0,16,0,0" Visibility="Collapsed">
                                 <StackPanel>
-                                    <TextBlock x:Name="DocPlanTitle" Text="Votre plan de rangement" Style="{StaticResource SectionTitle}"/>
+                                    <TextBlock x:Name="DocPlanTitle" Text="Préparez votre arborescence" Style="{StaticResource SectionTitle}"/>
                                     <TextBlock x:Name="DocPlanText" Style="{StaticResource Subtle}" TextWrapping="Wrap" Margin="0,6,0,8"/>
                                     <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
                                         <TextBlock Text="&#xE72E;" Style="{StaticResource Glyph}" FontSize="13" Foreground="MediumSeaGreen" VerticalAlignment="Top" Margin="0,2,8,0"/>
                                         <TextBlock Style="{StaticResource Subtle}" FontSize="12" TextWrapping="Wrap" MaxWidth="820"
-                                                   Text="Rangement réversible : rien n'est supprimé ni renommé. Chaque élément peut être remis à sa place, tout de suite ou plus tard. Vos dossiers existants sont conservés et réutilisés."/>
+                                                   Text="Rien n'est supprimé ni renommé. Vos dossiers existants sont conservés."/>
                                     </StackPanel>
                                     <WrapPanel>
-                                        <Button x:Name="DocPlanButton" Style="{StaticResource AccentButton}" Click="DocPlanOpen_Click" Margin="0,0,10,0" Content="Voir le plan"/>
+                                        <Button x:Name="DocPlanButton" Style="{StaticResource AccentButton}" Click="DocPlanOpen_Click" Margin="0,0,10,0" Content="Choisir mes dossiers"/>
                                         <Button Style="{StaticResource BaseButton}" Click="DocPlanLater_Click" Content="Plus tard"/>
                                     </WrapPanel>
                                 </StackPanel>
@@ -577,7 +564,7 @@
                             <StackPanel x:Name="DocTreePanel" Margin="0,6,0,0"/>
 
                             <StackPanel x:Name="DocRecentBox" Visibility="Collapsed" Margin="0,22,0,0">
-                                <TextBlock Text="Rangés récemment" Style="{StaticResource SectionTitle}" Margin="2,0,0,10"/>
+                                <TextBlock Text="Rangé récemment" Style="{StaticResource SectionTitle}" Margin="2,0,0,10"/>
                                 <Border Style="{StaticResource Card}" Padding="8">
                                     <StackPanel x:Name="DocRecentPanel"/>
                                 </Border>
@@ -680,7 +667,7 @@
                                         </Grid.ColumnDefinitions>
                                         <StackPanel>
                                             <TextBlock Text="Tout mettre à jour" Style="{StaticResource SectionTitle}"/>
-                                            <TextBlock Text="Applications, Windows, pilotes, Microsoft Store et antivirus en une seule opération. Options dans Réglages." Style="{StaticResource Subtle}" Margin="0,4,0,0"/>
+                                            <TextBlock Text="En une seule opération. Décochez ce que vous ne voulez pas inclure :" Style="{StaticResource Subtle}" Margin="0,4,0,0"/>
                                         </StackPanel>
                                         <Button x:Name="InstallButton" Grid.Column="1" Style="{StaticResource AccentButton}" Click="Install_Click" Padding="22,13" VerticalAlignment="Top">
                                             <StackPanel Orientation="Horizontal">
@@ -689,6 +676,15 @@
                                             </StackPanel>
                                         </Button>
                                     </Grid>
+                                    <!-- Contenu de « Tout mettre à jour » : choisi ici, à côté du bouton -->
+                                    <WrapPanel Margin="0,10,0,-4">
+                                        <CheckBox x:Name="OptApps" Content="Applications cochées" IsChecked="True" Margin="0,0,22,8"/>
+                                        <CheckBox x:Name="OptWu" Content="Windows Update (système)" IsChecked="True" Margin="0,0,22,8"/>
+                                        <CheckBox x:Name="OptDrivers" Content="Pilotes cochés" IsChecked="True" Margin="0,0,22,8"/>
+                                        <CheckBox x:Name="OptStore" Content="Microsoft Store" IsChecked="True" Margin="0,0,22,8"/>
+                                        <CheckBox x:Name="OptDefender" Content="Antivirus Defender" IsChecked="True" Margin="0,0,22,8"/>
+                                        <CheckBox x:Name="OptRestore" Content="Point de restauration préalable" IsChecked="True" Margin="0,0,22,8"/>
+                                    </WrapPanel>
 
                                     <StackPanel x:Name="InstallPanel" Visibility="Collapsed" Margin="0,18,0,0">
                                         <!-- Où en est-on ? -->
@@ -1014,6 +1010,10 @@
                                         <TextBlock TextWrapping="Wrap" Text="Identifier automatiquement en ligne les applications inconnues (seul le nom de l'application est transmis aux catalogues publics : winget, Steam, Google Play, Wikidata…)"/>
                                     </CheckBox>
                                     <TextBlock x:Name="OnlineSummary" Style="{StaticResource Subtle}" Margin="30,6,0,0" TextWrapping="Wrap"/>
+                                    <CheckBox x:Name="RemoteCatalogCheck" Margin="0,12,0,0" Checked="RemoteCatalog_Changed" Unchecked="RemoteCatalog_Changed">
+                                        <TextBlock TextWrapping="Wrap" Text="Recevoir les corrections de classement de Centre PC (fichier public signé, rien n'est envoyé)"/>
+                                    </CheckBox>
+                                    <TextBlock x:Name="RemoteCatalogStatus" Style="{StaticResource Subtle}" FontSize="12" Margin="30,4,0,0" TextWrapping="Wrap"/>
                                     <WrapPanel Margin="0,16,0,0">
                                         <Button x:Name="SortUnsortedButton" Style="{StaticResource AccentButton}" Click="OpenSorterAll_Click" Margin="0,0,10,10">
                                             <StackPanel Orientation="Horizontal">
@@ -1146,16 +1146,8 @@
                             <TextBlock Text="MISES À JOUR" Foreground="{StaticResource Text2}" FontSize="11" FontWeight="SemiBold" Margin="2,26,0,0"/>
                             <Border Style="{StaticResource Card}" Margin="0,10,0,0">
                                 <StackPanel>
-                                    <TextBlock Text="Contenu de « Tout mettre à jour »" Style="{StaticResource SectionTitle}"/>
-                                            <WrapPanel Margin="0,14,0,0">
-                                                <CheckBox x:Name="OptApps" Content="Applications cochées" IsChecked="True" Margin="0,0,22,8"/>
-                                                <CheckBox x:Name="OptWu" Content="Windows Update (système)" IsChecked="True" Margin="0,0,22,8"/>
-                                                <CheckBox x:Name="OptDrivers" Content="Pilotes cochés" IsChecked="True" Margin="0,0,22,8"/>
-                                                <CheckBox x:Name="OptStore" Content="Microsoft Store" IsChecked="True" Margin="0,0,22,8"/>
-                                                <CheckBox x:Name="OptDefender" Content="Antivirus Defender" IsChecked="True" Margin="0,0,22,8"/>
-                                                <CheckBox x:Name="OptRestore" Content="Point de restauration préalable" IsChecked="True" Margin="0,0,22,8"/>
-                                            </WrapPanel>
-                                    <Grid Margin="0,8,0,0">
+                                    <TextBlock Text="Vérification automatique" Style="{StaticResource SectionTitle}"/>
+                                    <Grid Margin="0,12,0,0">
                                         <CheckBox x:Name="DailyCheckBox" VerticalAlignment="Center" Checked="DailyCheck_Changed" Unchecked="DailyCheck_Changed">
                                             <TextBlock TextWrapping="Wrap" Text="Vérifier chaque jour, même lorsque Centre PC est fermé, et m'avertir par une notification (aucune installation sans votre accord)"/>
                                         </CheckBox>
@@ -1244,13 +1236,33 @@
                                     </Button>
                                     <WrapPanel Margin="0,10,0,0">
                                         <Button Style="{StaticResource BaseButton}" Content="Revoir la présentation" Click="ShowWelcome_Click" Margin="0,0,10,0"/>
-                                        <Button Style="{StaticResource BaseButton}" Content="Ouvrir le dossier des réglages" Click="OpenDataDir_Click"/>
+                                        <Button Style="{StaticResource BaseButton}" Content="Ouvrir le dossier des réglages" Click="OpenDataDir_Click" Margin="0,0,10,0"/>
+                                        <Button Style="{StaticResource BaseButton}" Content="Réafficher les informations masquées" Click="ResetHiddenNotes_Click"
+                                                ToolTip="Périphériques : revoir les informations « à connaître » que vous avez masquées"/>
                                     </WrapPanel>
                                     <WrapPanel Margin="0,10,0,0">
                                         <Button Style="{StaticResource BaseButton}" Content="Conditions d'utilisation" Click="Terms_Click" Margin="0,0,10,0"/>
                                         <Button Style="{StaticResource BaseButton}" Content="Confidentialité" Click="Privacy_Click" Margin="0,0,10,0"/>
                                         <Button Style="{StaticResource BaseButton}" Content="Usage professionnel" Click="ProNotice_Click"
                                                 ToolTip="Ce qu'un professionnel doit avoir en règle pour utiliser Centre PC dans son activité"/>
+                                    </WrapPanel>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Retours d'expérience : sur accord explicite, file visible, tout s'efface -->
+                            <TextBlock Text="AIDER À AMÉLIORER CENTRE PC" Foreground="{StaticResource Text2}" FontSize="11" FontWeight="SemiBold" Margin="2,26,0,0"/>
+                            <Border Style="{StaticResource Card}" Margin="0,10,0,0">
+                                <StackPanel>
+                                    <CheckBox x:Name="FeedbackCheck" Click="Feedback_Click">
+                                        <TextBlock TextWrapping="Wrap" Text="Partager des retours anonymes : erreurs rencontrées par Centre PC et catégories que je corrige"/>
+                                    </CheckBox>
+                                    <TextBlock Style="{StaticResource Subtle}" FontSize="12" TextWrapping="Wrap" Margin="30,6,0,0"
+                                               Text="Désactivé par défaut ; refuser ne retire aucune fonction. Jamais de nom de fichier, de contenu ni d'identité : le dossier personnel, le nom d'utilisateur et le nom du PC sont retirés avant tout enregistrement."/>
+                                    <TextBlock x:Name="FeedbackStatus" Style="{StaticResource Subtle}" FontSize="12" TextWrapping="Wrap" Margin="30,6,0,0"/>
+                                    <WrapPanel Margin="30,12,0,0">
+                                        <Button Style="{StaticResource BaseButton}" Content="Voir ce qui serait envoyé" Click="FeedbackView_Click" Margin="0,0,10,0"/>
+                                        <Button x:Name="FeedbackSendButton" Style="{StaticResource BaseButton}" Content="Envoyer maintenant" Click="FeedbackSend_Click" Margin="0,0,10,0"/>
+                                        <Button Style="{StaticResource BaseButton}" Content="Tout effacer" Click="FeedbackClear_Click"/>
                                     </WrapPanel>
                                 </StackPanel>
                             </Border>

@@ -29,6 +29,8 @@ public partial class MainWindow
         ("speakers", "Haut-parleurs", "", "#EC4899", "Gauche, droite, graves et aigus"),
         ("mic", "Micro", "", "#EC4899", "Niveau en direct, enregistrement et réécoute"),
         ("gamepad", "Manette", "", "#64748B", "Boutons, sticks, gâchettes, vibrations"),
+        ("startup", "Démarrage de Windows", "\uE7E8", "#F59E0B", "Ce qui se lance tout seul à l'allumage"),
+        ("space", "Espace disque", "\uEDA2", "#10B981", "Ce qui prend de la place, dossier par dossier"),
         ("bench", "Processeur, mémoire, carte graphique", "\uE950", "#8B5CF6", "Mesure, endurance, stabilité, températures"),
         ("disk", "Vitesse du disque", "", "#10B981", "Lecture et écriture réelles"),
         ("net", "Vitesse d'Internet", "", "#3B82F6", "Latence, téléchargement, envoi"),
@@ -38,6 +40,34 @@ public partial class MainWindow
     private readonly Dictionary<string, Button> _testTiles = new();
 
     private readonly List<(TextBlock label, WrapPanel panel)> _testGroups = new();
+
+    private TextBlock _checkupTileText;
+
+    /// <summary>
+    /// Rappel discret sur la tuile du bilan (aucune notification) : date du dernier bilan, et invitation à en refaire un
+    /// quand il a plus de trois mois — c'est ce qui donne son intérêt à la comparaison entre deux bilans.
+    /// </summary>
+    private async Task UpdateCheckupTileAsync()
+    {
+        try
+        {
+            var last = await Task.Run(() => MachineSnapshot.Latest(Environment.MachineName));
+            if (_checkupTileText == null) return;
+            var hint = CheckupReminder(last?.Date, DateTime.Now);
+            if (hint != null) _checkupTileText.Text = hint;
+        }
+        catch (Exception ex) { Log.Error("Rappel de bilan", ex); }
+    }
+
+    /// <summary>Texte de la tuile selon la date du dernier bilan (null : texte habituel).</summary>
+    internal static string CheckupReminder(DateTime? last, DateTime now)
+    {
+        if (last is not DateTime d) return "Jamais fait sur ce PC · santé, performances et rapport, de 3 minutes à 1 heure";
+        int days = (int)(now.Date - d.Date).TotalDays;
+        string when = days <= 0 ? "aujourd'hui" : days == 1 ? "hier" : days < 60 ? $"il y a {days} jours" : $"il y a {days / 30} mois";
+        return days >= 90 ? $"Dernier bilan {when} : c'est le moment d'en refaire un pour comparer"
+                          : $"Dernier bilan {when} · santé, performances, stabilité et rapport";
+    }
 
     private static string TestGroup(string key) => key switch
     {
@@ -78,7 +108,9 @@ public partial class MainWindow
             g.Children.Add(Glyph(glyph, color, main ? 40 : 30));
             var sp = new StackPanel { Margin = new Thickness(main ? 14 : 12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
             sp.Children.Add(new TextBlock { Text = title, FontWeight = FontWeights.SemiBold, FontSize = main ? 16 : 13 });
-            sp.Children.Add(new TextBlock { Text = text, Style = (Style)FindResource("Subtle"), FontSize = main ? 12.5 : 11.5, TextWrapping = TextWrapping.Wrap });
+            var sub = new TextBlock { Text = text, Style = (Style)FindResource("Subtle"), FontSize = main ? 12.5 : 11.5, TextWrapping = TextWrapping.Wrap };
+            sp.Children.Add(sub);
+            if (main) _checkupTileText = sub;
             Grid.SetColumn(sp, 1); g.Children.Add(sp);
             var b = new Button { Style = (Style)FindResource("BaseButton"), Content = g, Width = main ? 514 : 252, Height = main ? 76 : 66, Margin = new Thickness(0, 0, 10, 10),
                                  HorizontalAlignment = HorizontalAlignment.Left, HorizontalContentAlignment = HorizontalAlignment.Left, Padding = new Thickness(12, 8, 12, 8) };
@@ -89,6 +121,7 @@ public partial class MainWindow
         }
         foreach (var (key, title, glyph, color, text) in TestTools.Where(t => t.key == "checkup"))
             DeviceTestTiles.Children.Add(Tile(key, title, glyph, color, text, true));
+        _ = UpdateCheckupTileAsync();
         DeviceTestTiles.Children.Add(new TextBlock { Text = "Ou tester un élément :", Style = (Style)FindResource("Subtle"), Margin = new Thickness(2, 4, 0, 8) });
         foreach (var group in TestTools.Where(t => t.key != "checkup").GroupBy(t => TestGroup(t.key)))
         {
@@ -108,7 +141,7 @@ public partial class MainWindow
         _testKind = kind;
         DeviceTestHost.Children.Clear();
         var tool = TestTools.First(t => t.key == kind);
-        DeviceTestTitle.Text = "Test : " + tool.title;
+        DeviceTestTitle.Text = kind is "startup" or "space" ? tool.title : "Test : " + tool.title;
         switch (kind)
         {
             case "keyboard": BuildKeyboardTest(); break;
@@ -120,6 +153,8 @@ public partial class MainWindow
             case "net": BuildNetTest(); break;
             case "bench": BuildBenchTest(); break;
             case "checkup": BuildCheckupTest(); break;
+            case "startup": BuildStartupTool(); break;
+            case "space": BuildDiskUsageTool(); break;
         }
         DeviceTestOverlay.Visibility = Visibility.Visible;
         Focus();

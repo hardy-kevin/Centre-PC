@@ -24,6 +24,7 @@ public static class ToolSession
     /// <summary>Ouvre l'outil (Windows demande l'autorisation). Renvoie un message d'erreur, ou null.</summary>
     public static string Open(Tool t)
     {
+        if (RemoteCatalog.IsDisabled("outils-expert")) return "Les outils d'expert sont suspendus pour l'instant (un correctif est en préparation).";
         try
         {
             var dir = Path.Combine(Path.GetTempPath(), "CentrePC-outils");

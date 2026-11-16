@@ -1,3 +1,3 @@
-## Centre PC 1.2.3
+## Centre PC 1.2.4
 
-- Amélioration du bilan PC
+- Ajout de retours anonymes

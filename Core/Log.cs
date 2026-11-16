@@ -1,8 +1,8 @@
 namespace CentrePC.Core;
 
 /// <summary>
-/// Journal local des erreurs et des événements importants (Journaux\centrepc.log). Rien n'est envoyé :
-/// le fichier sert à comprendre un problème (« Ouvrir le journal » dans Réglages). Taille limitée à ~1 Mo.
+/// Journal local des erreurs et des événements importants (Journaux\centrepc.log). Le fichier n'est jamais envoyé :
+/// il sert à comprendre un problème (« Ouvrir le journal » dans Réglages). Taille limitée à ~1 Mo.
 /// </summary>
 public static class Log
 {
@@ -11,11 +11,18 @@ public static class Log
 
     public static void Info(string message) => Write("INFO", message);
 
-    public static void Error(string context, Exception ex) =>
+    public static void Error(string context, Exception ex)
+    {
         Write("ERREUR", $"{context} : {ex?.GetType().Name} {ex?.Message}{(ex?.InnerException != null ? " → " + ex.InnerException.Message : "")}");
+        Feedback.RecordError(context, ex);   // seulement si l'utilisateur a donné son accord (voir Feedback)
+    }
 
     /// <summary>Erreur détaillée (pile d'appels) : pour les plantages.</summary>
-    public static void Crash(string context, Exception ex) => Write("PLANTAGE", $"{context}\n{ex}");
+    public static void Crash(string context, Exception ex)
+    {
+        Write("PLANTAGE", $"{context}\n{ex}");
+        Feedback.RecordError("Plantage : " + context, ex);
+    }
 
     private static void Write(string level, string message)
     {

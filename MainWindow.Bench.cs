@@ -160,10 +160,11 @@ public partial class MainWindow
                 ? (installed ? "HWiNFO sera ouvert par Centre PC pendant le test, puis refermé." : "HWiNFO sera installé le temps du test, puis désinstallé complètement.")
                 : "non mesurées (HWiNFO désactivé ci-dessous)."));
             var box = new StackPanel { Margin = new Thickness(18, 4, 0, 4) };
-            box.Children.Add(Check("Utiliser HWiNFO pendant le test (Centre PC s'en occupe)", _benchManaged, v => { _benchManaged = v; _ = FillMeasuresAsync(panel, gpus); }));
+            box.Children.Add(Check("Mesurer avec HWiNFO pendant le test (Centre PC s'en occupe)", _benchManaged, v => { _benchManaged = v; _ = FillMeasuresAsync(panel, gpus); }));
             box.Children.Add(TestText("HWiNFO est un logiciel de REALiX, gratuit pour un usage personnel ; un usage professionnel demande sa licence Pro. "
                 + "En cochant, vous acceptez sa licence. Windows demande une autorisation au lancement du test ; son pilote n'est actif que pendant le test"
-                + (installed ? ", et vos réglages HWiNFO sont remis à l'identique." : ", et rien ne reste sur le PC après."), 11.5));
+                + (installed ? ", et vos réglages HWiNFO sont remis à l'identique." : ", et rien ne reste sur le PC après.") + " Si HWiNFO ne peut pas être installé, Centre PC utilise à la place LibreHardwareMonitor (logiciel libre) et son pilote signé PawnIO, "
+                + "installés puis retirés de la même façon.", 11.5));
             panel.Children.Add(box);
         }
         else Row(false, $"Température du processeur : non trouvée dans les mesures de {monitor}.");
@@ -318,7 +319,7 @@ public partial class MainWindow
         var detail = TestText("Acceptez l'autorisation demandée par Windows.", 13);
         DeviceTestHost.Children.Add(title);
         DeviceTestHost.Children.Add(detail);
-        DeviceTestHost.Children.Add(TestButton("\uE768", "Lancer sans HWiNFO", () => { if (_hwinfo == session) { session.Stop(); _hwinfo = null; } Go(); }));
+        DeviceTestHost.Children.Add(TestButton("\uE768", "Lancer sans la température du processeur", () => { if (_hwinfo == session) { session.Stop(); _hwinfo = null; } Go(); }));
         _testCleanup = () => { if (_hwinfo == session) { session.Stop(); _hwinfo = null; } };
         var started = DateTime.Now;
         while (_hwinfo == session && _testKind == kind && !go)
@@ -338,8 +339,9 @@ public partial class MainWindow
             // HWiNFO refermé avant que ses mesures arrivent : le test démarre sans lui (le script remet tout en ordre)
             if (state is "close" or "uninstall" or "done")
             {
-                Log.Info("HWiNFO géré : fermé avant le test (" + state + ")");
-                ShowToast("HWiNFO s'est fermé avant de fournir ses mesures : le test démarre sans la température du processeur.");
+                Log.Info("Capteurs gérés : fermés avant le test (" + state + ")");
+                _sensorIssue = "Le programme de capteurs s'est fermé avant de fournir ses mesures.";
+                ShowToast("Les capteurs se sont fermés avant de fournir leurs mesures : le test démarre sans la température du processeur.");
                 _hwinfo = null;
                 Go();
                 return;
@@ -350,9 +352,10 @@ public partial class MainWindow
                 if (ready && _hwinfo == session) { Go(); return; }
             }
             // Installation comprise : au plus 3 minutes, puis le test démarre quand même
-            if (DateTime.Now - started > TimeSpan.FromMinutes(3))
+            if (DateTime.Now - started > TimeSpan.FromMinutes(4))
             {
-                ShowToast("HWiNFO ne répond pas : le test démarre sans la température du processeur.");
+                _sensorIssue = "Le programme de capteurs n'a pas fourni la température du processeur en 4 minutes.";
+                ShowToast("Les capteurs ne répondent pas : le test démarre sans la température du processeur.");
                 Go();
                 return;
             }

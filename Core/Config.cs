@@ -74,6 +74,20 @@ public class Config
     public bool StartWithWindows { get; set; }
     /// <summary>Démarrage avec Windows déjà proposé (annonce montrée une seule fois aux utilisateurs de l'accès rapide).</summary>
     public bool StartupAsked { get; set; }
+    /// <summary>Catalogue distant signé (classement corrigé sans nouvelle version) : réglage, dernière vérification, dernière version acceptée.</summary>
+    public bool RemoteCatalog { get; set; } = true;
+    public DateTime? CatalogChecked { get; set; }
+    public int CatalogVersion { get; set; }
+    /// <summary>Retours d'expérience anonymes : null = jamais demandé, false = refusé, true = accepté.</summary>
+    public bool? FeedbackConsent { get; set; }
+    public string FeedbackInstallId { get; set; }
+    public string FeedbackIdMonth { get; set; }
+    public DateTime? FeedbackLastSent { get; set; }
+    /// <summary>Mode technicien : nom et coordonnées repris dans chaque rapport de bilan.</summary>
+    public string TechnicianName { get; set; }
+    public string TechnicianContact { get; set; }
+    /// <summary>Notes « à connaître » de la page Périphériques que l'utilisateur ne veut plus voir (texte de la note).</summary>
+    public List<string> HiddenDeviceNotes { get; set; } = new();
     /// <summary>L'utilisateur a accepté la licence de HWiNFO (logiciel tiers installé le temps des tests).</summary>
     public bool HwinfoAccepted { get; set; }
     public bool TrayHintShown { get; set; }
@@ -610,6 +624,8 @@ public static class Settings
         // Le suffixe « - Raccourci » ajouté par Windows ne dit rien de l'application
         var n = Normalize(AppKinds.StripShortcutSuffix(name));
         if (Current.Overrides.TryGetValue(n, out o)) return o;
+        // Catalogue distant signé : corrige le classement automatique, mais passe après les choix de l'utilisateur
+        if (CentrePC.Core.RemoteCatalog.Category(n) is { } remote && IsAvailable(remote)) return remote;
         // Script personnel (.bat, .ps1, .py…) : catégorie « Scripts », quel que soit le dossier où il se trouve
         if (AppKinds.IsPersonalScript(target) && IsAvailable(AppKinds.ScriptsCategory)) return AppKinds.ScriptsCategory;
         // Application hébergée (Android dans un émulateur, application web) : l'hôte ne compte pas
@@ -647,6 +663,7 @@ public static class Settings
         if (category == null) Current.Overrides.Remove(name);
         else Current.Overrides[name] = category;
         Save();
+        Feedback.RecordClassification(name, category);
     }
 
     public static bool IsHidden(string name) => Current.HiddenApps.Contains(name, StringComparer.OrdinalIgnoreCase);

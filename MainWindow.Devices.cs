@@ -80,6 +80,9 @@ public partial class MainWindow
         _ => ("Fonctionne", "#10B981", "")
     };
 
+    /// <summary>Cartes dont les informations « à connaître » sont dépliées (le temps de la session).</summary>
+    private readonly HashSet<string> _notesOpen = new();
+
     private void RenderDevices()
     {
         DevicesPanel.Children.Clear();
@@ -159,11 +162,12 @@ public partial class MainWindow
             panel.Children.Add(tiles);
         }
 
-        // Points à signaler, chacun avec sa correction
-        foreach (var i in c.Issues)
+        // Points à signaler, chacun avec sa correction. Les simples informations (« à connaître ») sont repliées sous une ligne :
+        // elles ne demandent rien, et peuvent être masquées pour de bon.
+        FrameworkElement IssueRow(DeviceIssue i, double left, Action hide)
         {
             var (_, ic, ig) = StatusLook(i.Level);
-            var row = new Grid { Margin = new Thickness(48, 10, 0, 0) };
+            var row = new Grid { Margin = new Thickness(left, 10, 0, 0) };
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             row.ColumnDefinitions.Add(new ColumnDefinition());
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -172,8 +176,54 @@ public partial class MainWindow
             Grid.SetColumn(t, 1); row.Children.Add(t);
             var acts = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(12, -3, 0, 0) };
             foreach (var a in i.Actions) acts.Children.Add(DeviceActionButton(c.Key, a));
+            if (hide != null)
+            {
+                var h = SmallButton("\uE711", null, (_, _) => hide(), tip: "Ne plus afficher cette information");
+                h.Padding = new Thickness(8, 5, 8, 5);
+                acts.Children.Add(h);
+            }
             Grid.SetColumn(acts, 2); row.Children.Add(acts);
-            panel.Children.Add(row);
+            return row;
+        }
+        bool IsNote(DeviceIssue i) => i.Level == DeviceStatus.Info && !i.Text.StartsWith("Corrigé par Centre PC", StringComparison.Ordinal);
+        foreach (var i in c.Issues.Where(i => !IsNote(i))) panel.Children.Add(IssueRow(i, 48, null));
+        var notes = c.Issues.Where(i => IsNote(i) && !Settings.Current.HiddenDeviceNotes.Contains(i.Text)).ToList();
+        if (notes.Count > 0)
+        {
+            var list = new StackPanel { Visibility = _notesOpen.Contains(c.Key) ? Visibility.Visible : Visibility.Collapsed };
+            var toggle = SmallButton("\uE946", "", null);
+            toggle.Margin = new Thickness(40, 10, 0, 0);
+            toggle.HorizontalAlignment = HorizontalAlignment.Left;
+            void Label()
+            {
+                int n = list.Children.Count;
+                toggle.Visibility = n > 0 ? Visibility.Visible : Visibility.Collapsed;
+                ((TextBlock)((StackPanel)toggle.Content).Children[1]).Text = (n == 1 ? "1 réglage à connaître" : $"{n} réglages à connaître") + (list.Visibility == Visibility.Visible ? "  ▴" : "  ▾");
+            }
+            foreach (var i in notes)
+            {
+                var note = i;
+                FrameworkElement row = null;
+                row = IssueRow(note, 48, () =>
+                {
+                    Settings.Current.HiddenDeviceNotes.Add(note.Text);
+                    Settings.Save();
+                    list.Children.Remove(row);
+                    Label();
+                    ShowToast("Information masquée. Pour la revoir : Réglages › Réafficher les informations masquées.");
+                });
+                list.Children.Add(row);
+            }
+            toggle.Click += (_, _) =>
+            {
+                bool open = list.Visibility != Visibility.Visible;
+                list.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
+                if (open) _notesOpen.Add(c.Key); else _notesOpen.Remove(c.Key);
+                Label();
+            };
+            Label();
+            panel.Children.Add(toggle);
+            panel.Children.Add(list);
         }
 
         // Aller plus loin : actions de la carte, paramètres de Windows, logiciel du fabricant
