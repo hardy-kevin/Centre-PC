@@ -37,6 +37,7 @@ Ce qui est enregistré, seulement après votre accord :
 |---|---|
 | Erreur rencontrée par Centre PC | Type de l'erreur, étape en cours, message, noms des fonctions de Centre PC concernées |
 | Catégorie corrigée à la main | Nom de l'application et catégorie choisie |
+| Logiciel installé resté sans catégorie | Nom du logiciel et de son éditeur, une seule fois par logiciel. Uniquement les logiciels des dossiers de programmes de Windows ou du Microsoft Store : jamais un script, un document, un raccourci vers un site ou un programme rangé dans vos dossiers personnels |
 
 Chaque retour porte aussi le jour (sans l'heure), la version de Centre PC et celle de Windows.
 

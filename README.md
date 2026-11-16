@@ -1,10 +1,13 @@
 # Centre PC
 
-**Ton PC Windows, en un seul endroit.** Centre PC regroupe trois choses dans une seule application simple :
+**Ton PC Windows, en un seul endroit.** Gratuit, libre, en français.
 
-- **Applications** : toutes tes applis, triées automatiquement par thème (Jeux, Bureautique, Développement, Administration système…), avec une recherche instantanée.
-- **Bureau** : un clic pour ranger ton bureau, des icônes personnalisées par thème, et tout se remet comme avant en un clic.
-- **Mises à jour** : applications, Windows, pilotes, Microsoft Store et antivirus mis à jour en une fois. Le matériel (carte graphique AMD / NVIDIA / Intel, carte mère, BIOS) est détecté automatiquement.
+- **Applications** : toutes tes applis, triées automatiquement par thème, avec une recherche instantanée et un lanceur au clavier.
+- **Bureau** : un clic pour ranger ton bureau, et tout se remet comme avant en un clic.
+- **Documents** : tes fichiers rangés dans Documents, Images, Musique et Vidéos ; rien n'est supprimé, tout s'annule.
+- **Mises à jour** : applications, Windows, pilotes, Microsoft Store et antivirus en une fois ; carte mère, BIOS et microcode vérifiés.
+- **Périphériques** : clavier, souris, son, écrans, disques et mémoire en direct, avec des corrections réversibles et des outils de test.
+- **Bilan du PC** : santé, performances, stabilité et températures, avec un rapport pour un client ou un technicien.
 
 ## Installation
 
@@ -16,7 +19,7 @@ Rien d'autre à installer : tout est dans un seul fichier (Windows 10 et 11, 64 
 
 ## Bientôt sur le Microsoft Store
 
-Une version signée par Microsoft sera disponible sur le Microsoft Store (sans écran d'avertissement à l'installation).
+Une version signée par Microsoft est en cours de certification sur le Microsoft Store (sans écran d'avertissement à l'installation). Pour respecter les règles du Store, cette édition n'installe aucun logiciel tiers : la température du processeur y est mesurée si tu ouvres toi-même HWiNFO ou LibreHardwareMonitor, et les « outils d'expert » n'y figurent pas.
 
 ## Mises à jour de Centre PC
 
@@ -29,13 +32,13 @@ Tout fonctionne hors connexion (applications, bureau, icônes, réglages). Seuls
 
 ## Confidentialité
 
-Centre PC ne collecte aucune donnée personnelle et n'envoie aucune statistique. Pour identifier une appli inconnue, seul son **nom** est envoyé à des catalogues publics (winget, Flathub, Steam, Google Play, Wikidata, GitHub) ; cette option se désactive dans Réglages. Détail complet : [CONFIDENTIALITE.md](CONFIDENTIALITE.md).
+Centre PC ne collecte aucune donnée personnelle. Pour identifier une appli inconnue, seul son **nom** est envoyé à des catalogues publics ; cette option se désactive dans Réglages. Des retours anonymes (erreurs, catégories corrigées) peuvent être partagés **uniquement si tu l'acceptes** : c'est désactivé par défaut. Détail complet : [CONFIDENTIALITE.md](CONFIDENTIALITE.md).
 
 Voir aussi : [conditions d'utilisation](CONDITIONS.md) · [usage professionnel](USAGE-PROFESSIONNEL.md).
 
 ## Déployer sur plusieurs postes
 
-Dans **Réglages > Thèmes**, exporte ta configuration, renomme le fichier `CentrePC.config.json` et place-le à côté de `CentrePC.exe` : il sera appliqué au premier lancement sur chaque poste.
+Dans **Réglages**, utilise « Exporter la configuration », renomme le fichier `CentrePC.config.json` et place-le à côté de `CentrePC.exe` : il sera appliqué au premier lancement sur chaque poste.
 
 ## Désinstaller
 
@@ -45,16 +48,16 @@ Paramètres Windows > Applications installées > Centre PC > Désinstaller. Les 
 
 © 2026 Kevin Hardy — logiciel libre et gratuit sous licence [GNU GPL version 3](LICENSE) : chacun peut l'utiliser (y compris dans une activité professionnelle), l'étudier, le modifier et le redistribuer ; toute version modifiée distribuée doit rester libre, sous la même licence, avec son code source.
 
-## Code signing policy
+## Signature et vérification
 
-Free code signing provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org).
+La version GitHub (`CentrePC.exe`) n'est pas signée numériquement : un certificat de signature est payant, et Centre PC est un projet gratuit. C'est ce qui provoque l'écran « Windows a protégé votre ordinateur » à la première installation.
 
-- **Committers and reviewers** : [Kevin Hardy](https://github.com/hardy-kevin) (owner of this repository).
-- **Approvers** : [Kevin Hardy](https://github.com/hardy-kevin).
-- Released binaries are built from this repository by GitHub Actions, without manual modification.
-- **Privacy policy** : this program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it. Details: [CONFIDENTIALITE.md](CONFIDENTIALITE.md).
+- **Sans avertissement** : la version du Microsoft Store, signée par Microsoft (en cours de certification).
+- **Vérifier la version GitHub** : chaque version publiée est fabriquée par GitHub Actions à partir de ce dépôt, sans étape manuelle, et accompagnée de son empreinte SHA-256. Centre PC vérifie cette empreinte avant d'installer une mise à jour.
+- Le code est public : tout ce que fait l'application peut être relu ici.
 
 ## Pour les développeurs
 
-C# / WPF / .NET 8. Compiler : `dotnet publish -c Release -o publish` (ou `Compiler.bat`).
-Publier une version : `Publier.bat` (crée l'étiquette `vX.Y.Z`, GitHub Actions construit et publie `CentrePC.exe`).
+C# / WPF / .NET 8. Compiler : `dotnet publish -c Release -o publish`. Tests : `dotnet test Tests\CentrePC.Tests`.
+
+Les versions sont construites et publiées par GitHub Actions à partir d'une étiquette `vX.Y.Z`. Les dossiers `Serveur` (service des retours) et `Catalogue` (corrections signées) ont chacun leur README.

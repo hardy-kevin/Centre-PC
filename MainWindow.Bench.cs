@@ -68,7 +68,7 @@ public partial class MainWindow
             box.Children.Add(Choices(new List<(string, object)> { ("15 min", 15), ("30 min", 30), ("1 heure", 60), ("2 heures", 120) }, _stabMinutes, v => _stabMinutes = (int)v));
             box.Children.Add(Choices(new List<(string, object)> { ("Mémoire + processeur", "both"), ("Mémoire seule", "mem"), ("Processeur seul", "cpu") }, _stabMode, v => _stabMode = (string)v));
         }, "Lancer", StartStabilityTest));
-        DeviceTestHost.Children.Add(TestRow("Outils d'expert", "CPU-Z, GPU-Z, CrystalDiskInfo… installés le temps de l'utilisation, puis retirés à leur fermeture.", "en cas de doute", box =>
+        if (ThirdPartyTools) DeviceTestHost.Children.Add(TestRow("Outils d'expert", "CPU-Z, GPU-Z, CrystalDiskInfo… installés le temps de l'utilisation, puis retirés à leur fermeture.", "en cas de doute", box =>
         {
             box.Children.Add(TestText("Déjà installés, ils sont simplement ouverts et laissés en place. Logiciels tiers : en les ouvrant, vous acceptez la licence de leur éditeur "
                 + "(usage professionnel : voir Réglages › Usage professionnel).", 12.5));
@@ -152,6 +152,8 @@ public partial class MainWindow
             Row(false, "Température du processeur et ventilateurs : HWiNFO est ouvert mais ne partage pas ses mesures.");
             panel.Children.Add(MonitorHelp(panel, gpus, monitor));
         }
+        else if (monitor == null && !ThirdPartyTools)
+            Row(false, "Température du processeur et ventilateurs : non mesurées. Pour les ajouter, ouvrez HWiNFO ou LibreHardwareMonitor avant de lancer le test.");
         else if (monitor == null)
         {
             // HWiNFO géré par Centre PC le temps du test
@@ -285,10 +287,16 @@ public partial class MainWindow
 
     private BenchRun _bench;
 
+    /// <summary>
+    /// Édition Microsoft Store : Centre PC n'installe aucun logiciel tiers ni pilote (règles du Store). La température du
+    /// processeur y est lue seulement si l'utilisateur a ouvert lui-même HWiNFO ou LibreHardwareMonitor.
+    /// </summary>
+    private static bool ThirdPartyTools => !Native.IsPackaged;
+
     /// <summary>HWiNFO géré par Centre PC : seulement après accord explicite sur sa licence (mémorisé).</summary>
     private bool _benchManaged
     {
-        get => Settings.Current.HwinfoAccepted;
+        get => ThirdPartyTools && Settings.Current.HwinfoAccepted;
         set { Settings.Current.HwinfoAccepted = value; Settings.Save(); }
     }
     private HwinfoSession _hwinfo;

@@ -20,15 +20,25 @@ namespace CentrePC.Core;
 /// </summary>
 public sealed class HwinfoSession
 {
-    private readonly string _dir, _stop, _status;
+    private readonly string _dir, _stop, _status, _protected;
+
+    /// <summary>
+    /// Dossier où le script administrateur écrit son état, son journal et ses repères : dans Program Files, donc non modifiable
+    /// sans droits administrateur. Un programme ordinaire ne peut ni y préparer un fichier piégé, ni y poser un faux repère
+    /// « installé par Centre PC ». Centre PC, lui, ne fait qu'y lire.
+    /// </summary>
+    public static string ProtectedDir => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "CentrePC-session");
     public bool Started { get; private set; }
 
     private HwinfoSession()
     {
         _dir = Path.Combine(Path.GetTempPath(), "CentrePC-hwinfo");
         Directory.CreateDirectory(_dir);
-        _stop = Path.Combine(_dir, "arret");
-        _status = Path.Combine(_dir, "etat.txt");
+        var id = Guid.NewGuid().ToString("N")[..12];
+        _protected = ProtectedDir;
+        // Signal d'arrêt : seul fichier que Centre PC (sans droits) écrit ; le script ne fait que constater sa présence
+        _stop = Path.Combine(_dir, "arret-" + id);
+        _status = Path.Combine(_protected, $"etat-{id}.txt");
     }
 
     /// <summary>Lance la session (Windows demande l'autorisation). null si refusé ou impossible.</summary>
@@ -43,12 +53,9 @@ public sealed class HwinfoSession
                 error = "La mesure de la température du processeur est suspendue pour l'instant (un correctif est en préparation).";
                 return null;
             }
-            File.Delete(s._stop);
-            File.WriteAllText(s._status, "start|Préparation…");
+            foreach (var old in Directory.EnumerateFiles(s._dir, "arret*")) try { File.Delete(old); } catch { }
             var script = Path.Combine(s._dir, "session.ps1");
-            var data = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CentrePC");
-            Directory.CreateDirectory(data);
-            var marker = Path.Combine(data, "hwinfo-installe-par-centre-pc");
+            var marker = Path.Combine(s._protected, "hwinfo-installe-par-centre-pc");
             // Script vérifié par empreinte avant exécution en administrateur (un autre programme ne peut pas le remplacer)
             Updates.StartVerifiedElevated(script, Script, ("Stop", s._stop), ("Status", s._status), ("Parent", Environment.ProcessId.ToString()), ("Marker", marker),
                 ("NoHwinfo", RemoteCatalog.IsDisabled("capteurs-hwinfo") ? "1" : "0"), ("NoLhm", RemoteCatalog.IsDisabled("capteurs-lhm") ? "1" : "0"));
@@ -79,7 +86,7 @@ public sealed class HwinfoSession
         var res = new List<DiskHealthInfo>();
         try
         {
-            var path = Path.Combine(_dir, "disques.json");
+            var path = Path.Combine(_protected, "disques.json");
             if (!File.Exists(path) || File.GetLastWriteTime(path) < DateTime.Now.AddHours(-1)) return res;
             using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(path));
             var items = doc.RootElement.ValueKind == System.Text.Json.JsonValueKind.Array ? doc.RootElement.EnumerateArray().ToList() : new() { doc.RootElement };
@@ -106,7 +113,12 @@ param([string]$Stop, [string]$Status, [string]$Parent, [string]$Marker, [string]
 $Parent = [int]$Parent
 $skip = $false
 $ErrorActionPreference = 'Continue'
-try { Start-Transcript -Path (Join-Path (Split-Path $Status) 'session.log') -Force | Out-Null } catch { }
+# État, journal et repères : dossier de Program Files (créé ici, en administrateur), illisible en écriture pour un programme ordinaire
+$etatDir = Split-Path $Status
+if (-not $etatDir.StartsWith($env:ProgramFiles, [StringComparison]::OrdinalIgnoreCase)) { exit 98 }
+New-Item -ItemType Directory -Force -Path $etatDir | Out-Null
+Get-ChildItem -Path $etatDir -Filter 'etat-*.txt' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+try { Start-Transcript -Path (Join-Path $etatDir 'session.log') -Force | Out-Null } catch { }
 function Say($state, $msg) { [IO.File]::WriteAllText($Status, ""$state|$msg"", [Text.Encoding]::UTF8) }
 function Find-Exe {
     foreach ($p in @(""$env:ProgramFiles\HWiNFO64\HWiNFO64.EXE"", ""${env:ProgramFiles(x86)}\HWiNFO64\HWiNFO64.EXE"")) { if (Test-Path $p) { return $p } }
@@ -262,7 +274,6 @@ function Run-Lhm($reason) {
         if ($backup -ne $null) { [IO.File]::WriteAllText($cfg, $backup) } elseif (Test-Path $cfg) { Remove-Item $cfg -Force -ErrorAction SilentlyContinue }
     }
     Clean-Up $false
-    Remove-Item $Stop -Force -ErrorAction SilentlyContinue
     Say 'done' 'Terminé.'
 }
 
@@ -405,7 +416,6 @@ if ($ours) {
     # Le repère « installé par Centre PC » n'est retiré qu'une fois tout supprimé : sinon le nettoyage se termine à la prochaine session
     if (Test-Path $dir) { Write-Output ""Dossier encore présent : nettoyage à la prochaine session"" } else { Remove-Item $Marker -Force -ErrorAction SilentlyContinue }
 }
-Remove-Item $Stop -Force -ErrorAction SilentlyContinue
 Say 'done' 'Terminé.'
 try { Stop-Transcript | Out-Null } catch { }
 ";

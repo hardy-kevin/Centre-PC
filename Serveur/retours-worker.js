@@ -11,8 +11,9 @@
 const MAX_BODY = 64 * 1024;        // octets
 const MAX_EVENTS = 200;            // par envoi
 const MAX_PER_DAY = 400;           // par installation et par jour
-const TYPES = new Set(["erreur", "classement"]);
-const KEYS = { erreur: ["etape", "type", "message", "pile"], classement: ["application", "categorie"] };
+const MAX_GLOBAL_PER_DAY = 50000;  // tous envois confondus : protège la base contre un envoi massif forgé
+const TYPES = new Set(["erreur", "classement", "non-reconnue"]);
+const KEYS = { erreur: ["etape", "type", "message", "pile"], classement: ["application", "categorie"], "non-reconnue": ["application", "editeur"] };
 
 const text = (v, max) => (typeof v === "string" ? v.slice(0, max) : "");
 const reply = (status, body) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json; charset=utf-8" } });
@@ -37,6 +38,8 @@ export default {
     const deja = await env.DB.prepare("SELECT COUNT(*) AS n FROM retours WHERE installation = ? AND recu = ?").bind(installation, jourServeur).first();
     let reste = MAX_PER_DAY - (deja?.n ?? 0);
     if (reste <= 0) return reply(429, { erreur: "plafond du jour atteint" });
+    const total = await env.DB.prepare("SELECT COUNT(*) AS n FROM retours WHERE recu = ?").bind(jourServeur).first();
+    if ((total?.n ?? 0) >= MAX_GLOBAL_PER_DAY) return reply(429, { erreur: "service saturé pour aujourd'hui" });
 
     const insert = env.DB.prepare(
       "INSERT OR IGNORE INTO retours (installation, empreinte, jour, recu, type, version, windows, donnees) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");

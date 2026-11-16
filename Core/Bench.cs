@@ -494,14 +494,20 @@ public static class CpuMicrocode
     /// <summary>Processeur concerné : Intel Core i5 / i7 / i9 de 13e ou 14e génération pour PC de bureau (pas les portables H, HX, U, P).</summary>
     public static bool Affected(string cpu)
     {
-        var m = System.Text.RegularExpressions.Regex.Match(cpu ?? "", @"(13th|14th) Gen Intel\(R\) Core\(TM\) i[579]-1[34]\d{3}([A-Z]*)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-        return m.Success && !System.Text.RegularExpressions.Regex.IsMatch(m.Groups[2].Value, "[HUP]", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        var m = System.Text.RegularExpressions.Regex.Match(cpu ?? "", @"Intel\(R\) Core\(TM\) i[579]-1[34]\d{3}([A-Z]*)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        return m.Success && !System.Text.RegularExpressions.Regex.IsMatch(m.Groups[1].Value, "[HUP]", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
     }
 
     /// <summary>État : (niveau, texte client, texte technique). Ok si le processeur n'est pas concerné ou à jour.</summary>
     public static (DeviceStatus level, string text, string tech) Assess(string cpu)
     {
         var (cur, bios) = Read();
+        return Assess(cpu, cur, bios);
+    }
+
+    /// <summary>Même jugement, pour une révision donnée (0 : illisible).</summary>
+    public static (DeviceStatus level, string text, string tech) Assess(string cpu, uint cur, uint bios)
+    {
         var tech = cur == 0 ? "Révision du microcode inconnue." : $"Microcode 0x{cur:X}" + (bios != 0 && bios != cur ? $" (BIOS : 0x{bios:X}, mis à jour par Windows)" : "");
         if (cur == 0)
             return Affected(cpu)

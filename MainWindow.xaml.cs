@@ -96,7 +96,7 @@ public partial class MainWindow : Window
         _ = Feedback.SendAsync(DateTime.Now);
         _ = RefreshCatalogAsync();
         _feedbackTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromHours(1) };
-        _feedbackTimer.Tick += (_, _) => { if (_online) _ = Feedback.SendAsync(DateTime.Now); };
+        _feedbackTimer.Tick += (_, _) => { if (_online) { _ = Feedback.SendAsync(DateTime.Now); _ = RefreshCatalogAsync(); } };   // le catalogue aussi : une fois par jour au plus, nouvel essai si le précédent a échoué
         _feedbackTimer.Start();
         Log.Info($"Démarrage : liste affichée en {sw.ElapsedMilliseconds} ms ({_apps.Count} applications)");
         bool changed = false;
@@ -164,6 +164,12 @@ public partial class MainWindow : Window
 
             _desk.Clear(); foreach (var d in desk) _desk.Add(d);
             _apps.Clear(); foreach (var a in all) _apps.Add(a);
+            // Retours d'expérience (seulement avec l'accord) : logiciels installés restés sans catégorie
+            if (Feedback.Enabled)
+            {
+                var unknown = all.Where(a => a.Theme == Settings.Current.DefaultCategory).Select(a => (a.Name, a.Publisher, a.Target, a.Aumid != null)).ToList();
+                _ = Task.Run(() => Feedback.RecordUnknownApps(unknown));
+            }
 
             RefreshAll();
             IconLoader.Enqueue(desk);

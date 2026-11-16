@@ -48,12 +48,14 @@ jobs:
           & $makeappx.FullName pack /d msix /p "publish/CentrePC-$v.msix" /o
           if ($LASTEXITCODE -ne 0) { throw "makeappx a échoué" }
 
+      # Publication avec l'outil officiel de GitHub (déjà présent sur la machine de construction) : aucune action tierce
+      # n'a accès au droit d'écriture sur le dépôt.
       - name: Publier la version
-        uses: softprops/action-gh-release@v2
-        with:
-          name: Centre PC ${{ github.ref_name }}
-          body_path: NOTES_VERSION.md
-          files: |
-            publish/CentrePC.exe
-            publish/CentrePC.exe.sha256
-            publish/*.msix
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          $files = @('publish/CentrePC.exe', 'publish/CentrePC.exe.sha256') + @(Get-ChildItem publish/*.msix -ErrorAction SilentlyContinue | ForEach-Object FullName)
+          gh release create $env:TAG @files --title "Centre PC $env:TAG" --notes-file NOTES_VERSION.md
+          if ($LASTEXITCODE -ne 0) { throw "La publication a échoué" }

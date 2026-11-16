@@ -1,3 +1,3 @@
-## Centre PC 1.2.4
+## Centre PC 1.2.5
 
-- Ajout de retours anonymes
+- Rangement du projet

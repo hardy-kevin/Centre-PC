@@ -46,7 +46,7 @@ public static class Feedback
     public static void SetConsent(bool on)
     {
         Settings.Current.FeedbackConsent = on;
-        if (!on) { Settings.Current.FeedbackInstallId = null; Settings.Current.FeedbackIdMonth = null; Clear(); }
+        if (!on) { Settings.Current.FeedbackInstallId = null; Settings.Current.FeedbackIdMonth = null; Settings.Current.FeedbackReported?.Clear(); Clear(); }
         Settings.Save();
     }
 
@@ -106,6 +106,45 @@ public static class Feedback
     {
         if (!Enabled || string.IsNullOrWhiteSpace(app) || category == null) return;
         Record("classement", new() { ["application"] = Clean(app), ["categorie"] = category });
+    }
+
+    /// <summary>
+    /// Applications installées restées sans catégorie : leur nom et leur éditeur aident à les reconnaître chez tout le monde.
+    /// Seuls les vrais logiciels installés sont concernés (dossiers de programmes ou Microsoft Store) : jamais un script,
+    /// un document, un raccourci vers un site ou un programme rangé dans un dossier personnel. Chaque application n'est
+    /// signalée qu'une fois.
+    /// </summary>
+    public static void RecordUnknownApps(IEnumerable<(string name, string publisher, string target, bool packaged)> apps)
+    {
+        if (!Enabled) return;
+        try
+        {
+            var reported = Settings.Current.FeedbackReported ??= new();
+            bool changed = false;
+            foreach (var (name, publisher, target, packaged) in apps)
+            {
+                if (string.IsNullOrWhiteSpace(name) || !(packaged || IsInstalledProgram(target))) continue;
+                var clean = Clean(name);
+                var print = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes("non-reconnue|" + clean.ToLowerInvariant())))[..16];
+                if (reported.Contains(print)) continue;
+                reported.Add(print);
+                changed = true;
+                Record("non-reconnue", new() { ["application"] = clean, ["editeur"] = Clean(publisher) });
+            }
+            if (reported.Count > 3000) reported.RemoveRange(0, reported.Count - 3000);
+            if (changed) Settings.Save();
+        }
+        catch { }
+    }
+
+    /// <summary>Programme (.exe) installé dans un dossier de programmes de Windows, et non dans un dossier personnel.</summary>
+    public static bool IsInstalledProgram(string target)
+    {
+        if (string.IsNullOrEmpty(target) || !target.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) return false;
+        foreach (var root in new[] { Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+                                     Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData) })
+            if (!string.IsNullOrEmpty(root) && target.StartsWith(root.TrimEnd('\\') + "\\", StringComparison.OrdinalIgnoreCase)) return true;
+        return false;
     }
 
     public static void Record(string type, Dictionary<string, string> data)

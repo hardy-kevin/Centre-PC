@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS retours (
   empreinte    TEXT NOT NULL,   -- empreinte du contenu (dédoublonnage)
   jour         TEXT NOT NULL,   -- jour de l'événement sur le PC (AAAA-MM-JJ)
   recu         TEXT NOT NULL,   -- jour de réception (AAAA-MM-JJ)
-  type         TEXT NOT NULL,   -- erreur | classement
+  type         TEXT NOT NULL,   -- erreur | classement | non-reconnue
   version      TEXT,
   windows      TEXT,
   donnees      TEXT NOT NULL,   -- JSON
@@ -23,3 +23,9 @@ CREATE VIEW IF NOT EXISTS classements_proposes AS
   SELECT json_extract(donnees, '$.application') AS application, json_extract(donnees, '$.categorie') AS categorie,
          COUNT(DISTINCT installation) AS installations
   FROM retours WHERE type = 'classement' GROUP BY 1, 2 HAVING installations >= 3 ORDER BY installations DESC;
+
+-- Applications installées restées sans catégorie, vues sur plusieurs installations : candidates pour le catalogue.
+CREATE VIEW IF NOT EXISTS non_reconnues AS
+  SELECT json_extract(donnees, '$.application') AS application, json_extract(donnees, '$.editeur') AS editeur,
+         COUNT(DISTINCT installation) AS installations
+  FROM retours WHERE type = 'non-reconnue' GROUP BY 1, 2 HAVING installations >= 3 ORDER BY installations DESC;

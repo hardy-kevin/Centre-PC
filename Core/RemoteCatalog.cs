@@ -166,6 +166,6 @@ public static class RemoteCatalog
             Settings.Save();
             return Accept(content, signature, PublicKeys);
         }
-        catch (Exception ex) { Log.Info("Catalogue : téléchargement impossible : " + ex.GetType().Name); return false; }
+        catch (Exception ex) { Log.Info("Catalogue : téléchargement impossible : " + ex.GetType().Name + " " + ex.Message); return false; }
     }
 }

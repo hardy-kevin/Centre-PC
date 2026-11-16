@@ -538,3 +538,63 @@ public class RemoteCatalogTests
         finally { RemoteCatalog.LoadCached(Array.Empty<string>()); }
     }
 }
+
+public class MicrocodeTests
+{
+    private const string Raptor = "13th Gen Intel(R) Core(TM) i5-13600KF";
+
+    [Theory]
+    [InlineData("13th Gen Intel(R) Core(TM) i5-13600KF", true)]
+    [InlineData("Intel(R) Core(TM) i9-14900K", true)]
+    [InlineData("AMD Ryzen 7 7800X3D 8-Core Processor", false)]
+    [InlineData("12th Gen Intel(R) Core(TM) i5-12400F", false)]
+    public void Processeurs_concernes_par_le_defaut_Intel(string cpu, bool affected) => Assert.Equal(affected, CpuMicrocode.Affected(cpu));
+
+    [Theory]
+    [InlineData(0x129u, DeviceStatus.Problem)]   // avant le correctif de septembre 2024
+    [InlineData(0x12Bu, DeviceStatus.Warning)]   // corrigé, mais pas la dernière variante
+    [InlineData(0x12Fu, DeviceStatus.Ok)]
+    [InlineData(0x130u, DeviceStatus.Ok)]
+    [InlineData(0u, DeviceStatus.Info)]          // illisible : on le dit, sans alarmer
+    public void Jugement_selon_la_revision(uint revision, DeviceStatus expected) => Assert.Equal(expected, CpuMicrocode.Assess(Raptor, revision, 0).level);
+
+    [Fact]
+    public void Processeur_non_concerne_jamais_en_alerte()
+    {
+        Assert.Equal(DeviceStatus.Ok, CpuMicrocode.Assess("AMD Ryzen 7 7800X3D", 0x10, 0).level);
+        Assert.Equal(DeviceStatus.Ok, CpuMicrocode.Assess("AMD Ryzen 7 7800X3D", 0, 0).level);
+    }
+}
+
+public class FeedbackUnknownAppsTests
+{
+    [Fact]
+    public void Seuls_les_logiciels_installes_sont_signales_et_une_seule_fois()
+    {
+        Sandbox.Reset();
+        var pf = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+        var profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var apps = new[]
+        {
+            ("Outil Inconnu", "Éditeur Exemple", Path.Combine(pf, "Outil", "outil.exe"), false),
+            ("Appli du Store", "", (string)null, true),
+            ("Mon script perso", "", Path.Combine(profile, "Documents", "sauvegarde.bat"), false),      // script
+            ("Jeu portable", "", Path.Combine(profile, "Jeux", "jeu.exe"), false),                       // dossier personnel
+            ("Site de ma banque", "", "https://exemple.fr", false),                                     // raccourci vers un site
+        };
+        Feedback.RecordUnknownApps(apps);
+        Assert.Empty(Feedback.Queue());   // sans accord : rien
+
+        Feedback.SetConsent(true);
+        try
+        {
+            Feedback.RecordUnknownApps(apps);
+            Feedback.RecordUnknownApps(apps);   // déjà signalées : pas de doublon, même un autre jour
+            var names = Feedback.Queue().Where(e => e.Type == "non-reconnue").Select(e => e.Donnees["application"]).OrderBy(n => n).ToArray();
+            Assert.Equal(new[] { "Appli du Store", "Outil Inconnu" }, names);
+            Assert.Equal(2, Settings.Current.FeedbackReported.Count);
+        }
+        finally { Feedback.SetConsent(false); }
+        Assert.Empty(Settings.Current.FeedbackReported);
+    }
+}

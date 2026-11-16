@@ -30,10 +30,9 @@ public static class ToolSession
             var dir = Path.Combine(Path.GetTempPath(), "CentrePC-outils");
             Directory.CreateDirectory(dir);
             var script = Path.Combine(dir, "outil.ps1");
-            var data = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CentrePC");
-            Directory.CreateDirectory(data);
-            var marker = Path.Combine(data, $"outil-{t.WingetId}-installe-par-centre-pc");
-            var log = Path.Combine(dir, $"{t.Name}.log");
+            // Repère et journal écrits par le script administrateur : dans Program Files, hors de portée d'un programme ordinaire
+            var marker = Path.Combine(HwinfoSession.ProtectedDir, $"outil-{t.WingetId}-installe-par-centre-pc");
+            var log = Path.Combine(HwinfoSession.ProtectedDir, $"{t.Name}.log");
             // Script vérifié par empreinte avant exécution en administrateur
             Updates.StartVerifiedElevated(script, Script, ("Id", t.WingetId), ("Filter", t.ExeFilter), ("Marker", marker), ("Log", log));
             return null;
@@ -44,6 +43,8 @@ public static class ToolSession
 
     private const string Script = @"
 param([string]$Id, [string]$Filter, [string]$Marker, [string]$Log)
+if (-not $Marker.StartsWith($env:ProgramFiles, [StringComparison]::OrdinalIgnoreCase) -or -not $Log.StartsWith($env:ProgramFiles, [StringComparison]::OrdinalIgnoreCase)) { exit 98 }
+New-Item -ItemType Directory -Force -Path (Split-Path $Marker) | Out-Null
 try { Start-Transcript -Path $Log -Force | Out-Null } catch { }
 function Find-Exe {
     # Uniquement les dossiers protégés de Windows : un programme sans droits ne peut pas y déposer de faux outil

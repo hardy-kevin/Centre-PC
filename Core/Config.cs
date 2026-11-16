@@ -83,6 +83,8 @@ public class Config
     public string FeedbackInstallId { get; set; }
     public string FeedbackIdMonth { get; set; }
     public DateTime? FeedbackLastSent { get; set; }
+    /// <summary>Empreintes des retours signalés une seule fois (application non reconnue) : pour ne pas les renvoyer chaque jour.</summary>
+    public List<string> FeedbackReported { get; set; } = new();
     /// <summary>Mode technicien : nom et coordonnées repris dans chaque rapport de bilan.</summary>
     public string TechnicianName { get; set; }
     public string TechnicianContact { get; set; }
