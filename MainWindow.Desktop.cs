@@ -205,8 +205,8 @@ public partial class MainWindow
 
         StyleSection.Visibility = folders || styled ? Visibility.Visible : Visibility.Collapsed;
         StyleIntro.Text = folders
-            ? "Chaque icône du bureau est placée sur une tuile aux couleurs de sa catégorie. Les icônes d'origine sont sauvegardées et peuvent être restaurées à tout moment."
-            : "Avec le rangement dans Centre PC, le bureau reste vide : l'apparence ne concerne que les éléments conservés sur le bureau.";
+            ? "Chaque icône prend la couleur de sa catégorie. Les icônes d'origine sont sauvegardées et peuvent revenir à tout moment."
+            : "Le bureau étant rangé dans Centre PC, l'apparence ne concerne que les éléments gardés sur le bureau.";
         OpenStoreButton.Visibility = folders ? Visibility.Collapsed : Visibility.Visible;
     }
 

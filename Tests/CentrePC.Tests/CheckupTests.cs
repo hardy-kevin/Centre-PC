@@ -598,3 +598,67 @@ public class FeedbackUnknownAppsTests
         Assert.Empty(Settings.Current.FeedbackReported);
     }
 }
+
+public class AccessibleTextTests
+{
+    [Fact]
+    public void Icones_retirees_textes_assembles()
+    {
+        Assert.Equal("Lancer le bilan", AccessibleText.Clean("\uE768  Lancer le bilan"));
+        Assert.Equal("Bilan du PC, Dernier bilan hier", AccessibleText.Name(new[] { "\uE9D9", "Bilan du PC", "Dernier bilan hier" }, null));
+    }
+
+    [Fact]
+    public void Bouton_icone_seule_nomme_par_son_infobulle()
+    {
+        Assert.Equal("Fermer (Échap)", AccessibleText.Name(new[] { "\uE8BB" }, "Fermer (Échap)"));
+        Assert.Equal("", AccessibleText.Name(new[] { "\uE8BB" }, null));
+    }
+
+    [Fact]
+    public void Doublons_et_vides_ignores_nom_borne()
+    {
+        Assert.Equal("Clavier", AccessibleText.Name(new[] { "Clavier", " ", "Clavier", "" }, "x"));
+        Assert.True(AccessibleText.Name(new[] { new string('a', 500) }, null).Length <= 200);
+    }
+
+    [Fact]
+    public void Separateurs_lus_naturellement_et_actions_generiques_reperees()
+    {
+        Assert.Equal("Documents, Administratif, Emploi et salaires, 1 élément", AccessibleText.Clean("Documents › Administratif › Emploi et salaires  ·  1 élément"));
+        Assert.True(AccessibleText.IsGenericAction("Afficher l'emplacement"));
+        Assert.True(AccessibleText.IsGenericAction("\uE8A7 Ouvrir"));
+        Assert.False(AccessibleText.IsGenericAction("Ranger le bureau maintenant et tout de suite"));
+        Assert.False(AccessibleText.IsGenericAction("Diablo IV"));
+    }
+
+    [Theory]
+    [InlineData("10 s par cœur", "10 secondes par cœur")]
+    [InlineData("1 min par cœur", "1 minute par cœur")]
+    [InlineData("20 boucles × 60 s (comme 3DMark)", "20 boucles de 60 secondes (comme 3DMark)")]
+    [InlineData("Mémoire 69 Go/s (théorique 96 Go/s)", "Mémoire 69 gigaoctets par seconde (théorique 96 gigaoctets par seconde)")]
+    [InlineData("Processeur 48 °C", "Processeur 48 degrés")]
+    [InlineData("1220 tr/min", "1220 tours par minute")]
+    [InlineData("70 GFLOPS sur 1 cœur", "70 gigaflops sur 1 cœur")]
+    [InlineData("1 h", "1 heure")]
+    [InlineData("Applications · 15", "Applications, 15")]
+    [InlineData("Mises à jour", "Mises à jour")]          // pas de chiffre : rien à développer
+    [InlineData("Version 1.2.5", "Version 1.2.5")]
+    public void Unites_lues_en_entier(string text, string spoken) => Assert.Equal(spoken, AccessibleText.Clean(text));
+
+    [Fact]
+    public void Initiale_ou_compteur_isole_ignore()
+    {
+        // Tuile sans icône : la lettre affichée à la place ne doit pas être lue avant le nom
+        Assert.Equal("Firefox", AccessibleText.Name(new[] { "F", "Firefox" }, null));
+        Assert.Equal("7", AccessibleText.Name(new[] { "7" }, null));
+        Assert.Equal("Office, 3", AccessibleText.Name(new[] { "3", "Office" }, null));
+    }
+
+    [Fact]
+    public void Elements_de_liste_annonces_par_leur_nom()
+    {
+        Assert.Equal("Jeux, 3 application(s)", new ThemeGroup { Name = "Jeux", Items = new() { new AppItem(), new AppItem(), new AppItem() } }.ToString());
+        Assert.Equal("Outil, 1.0 vers 2.0", new WingetUpdate { Name = "Outil", Version = "1.0", Available = "2.0" }.ToString());
+    }
+}

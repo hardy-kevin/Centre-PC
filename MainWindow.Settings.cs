@@ -30,7 +30,7 @@ public partial class MainWindow
         _settingsInit = false;
         int unsorted = SortCandidates(includeSkipped: true).Count;
         OnlineSummary.Text = unsorted == 0
-            ? "Toutes les applications ont une catégorie. « Vérifier le tri automatique » permet de corriger les classements erronés."
+            ? "Toutes les applications ont une catégorie. Pour corriger un classement : « Vérifier le tri automatique »."
             : $"{unsorted} application(s) encore dans « Autres ».";
         // Boutons utiles seulement s'il reste des applications non classées
         SortUnsortedButton.Visibility = unsorted > 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -189,28 +189,34 @@ public partial class MainWindow
     private void BuildPickers()
     {
         ThemeColors.Children.Clear();
+        int colorIndex = 0;
         foreach (var hex in Palette)
         {
             var brush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex));
-            var b = new Border
+            colorIndex++;
+            var b = new ClickBorder
             {
                 Width = 28, Height = 28, CornerRadius = new CornerRadius(14), Background = brush, Margin = new Thickness(0, 0, 8, 8),
                 Cursor = Cursors.Hand, BorderBrush = Brushes.White, BorderThickness = new Thickness(hex == _pickedColor ? 3 : 0), Tag = hex
             };
+            System.Windows.Automation.AutomationProperties.SetName(b, $"Couleur {colorIndex}" + (hex == _pickedColor ? ", choisie" : ""));
             b.MouseLeftButtonUp += (s, _) => { _pickedColor = (string)((Border)s).Tag; BuildPickers(); };
             ThemeColors.Children.Add(b);
         }
         ThemeGlyphs.Children.Clear();
         var pickedBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(_pickedColor));
+        int glyphIndex = 0;
         foreach (var g in GlyphChoices)
         {
-            var b = new Border
+            glyphIndex++;
+            var b = new ClickBorder
             {
                 Width = 34, Height = 34, CornerRadius = new CornerRadius(9), Margin = new Thickness(0, 0, 8, 8), Cursor = Cursors.Hand,
                 Background = g == _pickedGlyph ? pickedBrush : (Brush)FindResource("Surface2"), Tag = g,
                 Child = new TextBlock { Text = g, FontFamily = (FontFamily)FindResource("Icons"), FontSize = 15, Foreground = Brushes.White,
                                         HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center }
             };
+            System.Windows.Automation.AutomationProperties.SetName(b, $"Icône {glyphIndex}" + (g == _pickedGlyph ? ", choisie" : ""));
             b.MouseLeftButtonUp += (s, _) => { _pickedGlyph = (string)((Border)s).Tag; BuildPickers(); };
             ThemeGlyphs.Children.Add(b);
         }
@@ -450,12 +456,22 @@ public partial class MainWindow
     private void RefreshFeedbackUi()
     {
         FeedbackCheck.IsChecked = Feedback.Enabled;
+        HoverSpeechCheck.IsChecked = Settings.Current.HoverSpeech;
         int n = Feedback.Enabled ? Feedback.Queue().Count : 0;
         FeedbackStatus.Text = !Feedback.Enabled ? "Rien n'est enregistré ni envoyé."
             : (n == 0 ? "Aucun retour en attente." : n == 1 ? "1 retour en attente." : $"{n} retours en attente.")
               + (Feedback.CanSend ? " Envoi groupé, une fois par jour au plus." : " L'envoi n'est pas actif dans cette version : rien ne quitte ce PC.")
               + (Feedback.Enabled && Feedback.LastResult != null ? " " + Feedback.LastResult : "");
         FeedbackSendButton.IsEnabled = Feedback.Enabled && Feedback.CanSend && n > 0;
+    }
+
+    private void NavGuideReplay_Click(object sender, RoutedEventArgs e) => PlayNavGuide();
+
+    private void HoverSpeech_Click(object sender, RoutedEventArgs e)
+    {
+        Settings.Current.HoverSpeech = HoverSpeechCheck.IsChecked == true;
+        Settings.Save();
+        if (Settings.Current.HoverSpeech) NarratorMouse.Suspend(); else NarratorMouse.Restore();   // celle du Narrateur reprend aussitôt si décoché
     }
 
     private void Feedback_Click(object sender, RoutedEventArgs e)

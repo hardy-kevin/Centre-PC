@@ -187,8 +187,15 @@ public partial class MainWindow
             {
                 var scanned = HotkeyConflicts.ScanKnownApps();
                 var names = InstalledNames();
-                var free = new[] { new HotkeyCombo(HotkeyCombo.Ctrl | HotkeyCombo.Alt, 0x20), new HotkeyCombo(HotkeyCombo.Ctrl | HotkeyCombo.Shift, 0x20),
-                                   new HotkeyCombo(HotkeyCombo.Alt | HotkeyCombo.Shift, 0x20), new HotkeyCombo(HotkeyCombo.Ctrl | HotkeyCombo.Alt | HotkeyCombo.Shift, 0x20) }
+                var candidates = new[] { new HotkeyCombo(HotkeyCombo.Ctrl | HotkeyCombo.Alt, 0x20), new HotkeyCombo(HotkeyCombo.Ctrl | HotkeyCombo.Shift, 0x20),
+                                   new HotkeyCombo(HotkeyCombo.Alt | HotkeyCombo.Shift, 0x20), new HotkeyCombo(HotkeyCombo.Ctrl | HotkeyCombo.Alt | HotkeyCombo.Shift, 0x20) };
+                // Lecteur d'écran actif : Ctrl + Maj + Espace d'abord, et jamais de combinaison proche de celles de Windows
+                // (Alt + Espace ouvre le menu de la fenêtre, Alt + Maj change la langue du clavier) qui ferait perdre le fil.
+                // Le raccourci choisi ensuite par la personne est gardé tel quel.
+                if (Accessibility.ScreenReaderRunning)
+                    candidates = new[] { new HotkeyCombo(HotkeyCombo.Ctrl | HotkeyCombo.Shift, 0x20), new HotkeyCombo(HotkeyCombo.Ctrl | HotkeyCombo.Alt | HotkeyCombo.Shift, 0x20),
+                                         new HotkeyCombo(HotkeyCombo.Ctrl | HotkeyCombo.Alt, 0x20) };
+                var free = candidates
                     .FirstOrDefault(c => HotkeyConflicts.Check(c, null, scanned, names).State is HotkeyState.Free or HotkeyState.Note);
                 if (free != null) cfg.QuickAccessHotkey = free.Serialize();
             }
@@ -198,7 +205,7 @@ public partial class MainWindow
         QuickOfferBadge.Text = _offerStartupOnly ? "Nouveau" : "Accès rapide";
         QuickOfferTitle.Text = _offerStartupOnly ? "Votre lanceur, prêt dès l'allumage du PC" : "Centre PC, toujours à portée de main";
         QuickOfferText.Text = _offerStartupOnly
-            ? "Le lanceur s'ouvre déjà avec votre raccourci. Centre PC peut maintenant démarrer en même temps que Windows, sans aucune fenêtre : le raccourci fonctionne dès l'ouverture de session."
+            ? "Centre PC peut démarrer avec Windows, sans fenêtre : votre raccourci fonctionne dès l'ouverture de session."
             : "Inutile de garder une fenêtre ouverte : un raccourci suffit pour lancer n'importe quelle application.";
         QuickOfferKeys.Children.Clear();
         if (hk != null)
@@ -291,7 +298,7 @@ public partial class MainWindow
         var custom = new Grid { Margin = new Thickness(0, 10, 0, 0) };
         custom.ColumnDefinitions.Add(new ColumnDefinition());
         custom.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        custom.Children.Add(new TextBlock { Text = "Un autre raccourci ? Cliquez sur « Enregistrer… » puis appuyez sur la combinaison voulue : elle est vérifiée de la même façon.",
+        custom.Children.Add(new TextBlock { Text = "Un autre raccourci ? Cliquez sur « Enregistrer… », puis appuyez sur la combinaison voulue.",
                                             Style = (Style)FindResource("Subtle"), FontSize = 12.5, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center });
         _captureButton = new Button { Style = (Style)FindResource("BaseButton"), Content = "Enregistrer…", Padding = new Thickness(14, 6, 14, 6), Margin = new Thickness(12, 0, 0, 0) };
         _captureButton.Click += (_, _) => StartCapture();
@@ -306,7 +313,7 @@ public partial class MainWindow
             QuickHotkeys.Children.Add(new TextBlock
             {
                 Text = $"Réglages d'autres applications modifiés pour ce raccourci : {string.Join(", ", Settings.Current.HotkeyBackups.Select(b => b.App).Distinct())}. "
-                     + "Ils seront remis à l'identique si vous changez de raccourci, désactivez l'accès rapide ou désinstallez Centre PC.",
+                     + "Ils seront remis à l'identique si vous changez de raccourci ou désactivez l'accès rapide.",
                 Style = (Style)FindResource("Subtle"), FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 0)
             });
     }
@@ -353,7 +360,7 @@ public partial class MainWindow
             Grid.SetColumn(identify, 3); grid.Children.Add(identify);
         }
 
-        var row = new Border
+        var row = new ClickBorder
         {
             Padding = new Thickness(12, 8, 12, 8), CornerRadius = new CornerRadius(10), Margin = new Thickness(0, 0, 0, 2), Child = grid,
             Background = selected ? new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(0x30, 0x7C, 0x5C, 0xFF)) : System.Windows.Media.Brushes.Transparent,
@@ -361,6 +368,7 @@ public partial class MainWindow
             ToolTip = blocked ? check.Text + " : ce raccourci n'est pas proposé." : null
         };
         if (!blocked && !selected) row.MouseLeftButtonUp += (_, _) => ChooseHotkey(k);
+        else row.Focusable = false;   // rien à faire sur cette ligne : le clavier passe à la suivante
         return row;
     }
 

@@ -127,8 +127,8 @@ public partial class MainWindow
         var how = plan.Kind switch
         {
             UninstallKind.Store => "L'application sera retirée de votre compte Windows.",
-            UninstallKind.WindowsFeature => "C'est une fonctionnalité facultative de Windows : Windows la retire lui-même (autorisation administrateur demandée). "
-                                           + "Vous pourrez la réinstaller depuis Paramètres › Système › Fonctionnalités facultatives. Un redémarrage peut être nécessaire.",
+            UninstallKind.WindowsFeature => "Fonctionnalité facultative de Windows : Windows la retire lui-même, après votre autorisation. "
+                                           + "Elle se réinstalle depuis Paramètres, Système, Fonctionnalités facultatives. Un redémarrage peut être nécessaire.",
             UninstallKind.Steam => "Steam va vous demander de confirmer.",
             _ => "Le programme de désinstallation de l'éditeur va s'ouvrir : suivez ses étapes."
         };

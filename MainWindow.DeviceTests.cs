@@ -136,7 +136,12 @@ public partial class MainWindow
 
     private void OpenDeviceTest(string kind)
     {
-        if (kind == "screen") { new ScreenTestWindow(this).Show(); return; }
+        if (kind == "screen")
+        {
+            Accessibility.AnnounceInstructions(DeviceTestTiles, "Test de l'écran : il est visuel. Il affiche des couleurs unies en plein écran pour repérer les points morts. Échap pour quitter.");
+            new ScreenTestWindow(this).Show();
+            return;
+        }
         CloseDeviceTest();
         _testKind = kind;
         DeviceTestHost.Children.Clear();
@@ -158,10 +163,19 @@ public partial class MainWindow
         }
         DeviceTestOverlay.Visibility = Visibility.Visible;
         Focus();
+        // Tests qui gardent toutes les touches pour eux : leurs consignes sont lues dès l'ouverture
+        if (kind is "mouse" or "gamepad")
+        {
+            var first = DeviceTestHost.Children.OfType<TextBlock>().FirstOrDefault()?.Text;
+            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, () =>
+                Accessibility.AnnounceInstructions(DeviceTestHost, $"{DeviceTestTitle.Text}. {first} Échap pour quitter."));
+        }
     }
 
     private void CloseDeviceTest()
     {
+        // Consignes encore en cours de lecture : elles s'arrêtent avec l'écran
+        if (_testKind != null) Accessibility.StopInstructions(DeviceTestHost, $"{DeviceTestTitle.Text.Replace("Test : ", "Test ")} fermé");
         _testCleanup?.Invoke();
         _testCleanup = null;
         _testKind = null;
@@ -171,18 +185,38 @@ public partial class MainWindow
     private void DeviceTestClose_Click(object sender, RoutedEventArgs e) => CloseDeviceTest();
 
     /// <summary>Clavier : le test du clavier reçoit toutes les touches (Échap compris) ; ailleurs Échap ferme.</summary>
+    private DateTime _lastEscape;
+
     private bool DeviceTestKey(KeyEventArgs e, bool down)
     {
-        if (_testKind == "keyboard") { KeyboardTestKey(e, down); e.Handled = true; return true; }
+        if (_testKind == "keyboard")
+        {
+            // Échap est une touche à tester : deux appuis rapprochés ferment le test (sans souris)
+            if (down && e.Key == Key.Escape && !e.IsRepeat)
+            {
+                if ((DateTime.Now - _lastEscape).TotalSeconds < 1.2) { CloseDeviceTest(); e.Handled = true; return true; }
+                _lastEscape = DateTime.Now;
+            }
+            KeyboardTestKey(e, down); e.Handled = true; return true;
+        }
         if (down && e.Key == Key.Escape) { CloseDeviceTest(); return true; }
         if (_testKind == "mouse" && down && _mouseKey != null) { _mouseKey(e); e.Handled = true; return true; }
         return false;
     }
 
-    private TextBlock TestText(string text, double size = 13, bool subtle = true) => new()
+    /// <summary>
+    /// Texte d'un écran de test. Ce qui suit un retour à la ligne est un détail : il n'encombre pas l'écran et s'affiche au
+    /// survol de la pastille « i » (lu aussi par le lecteur d'écran).
+    /// </summary>
+    private TextBlock TestText(string text, double size = 13, bool subtle = true)
     {
-        Text = text, FontSize = size, TextWrapping = TextWrapping.Wrap, Style = subtle ? (Style)FindResource("Subtle") : null, Margin = new Thickness(0, 0, 0, 10)
-    };
+        var tb = new TextBlock { FontSize = size, TextWrapping = TextWrapping.Wrap, Style = subtle ? (Style)FindResource("Subtle") : null, Margin = new Thickness(0, 0, 0, 10) };
+        int cut = text?.IndexOf('\n') ?? -1;
+        if (cut < 0) { tb.Text = text; return tb; }
+        tb.Inlines.Add(new System.Windows.Documents.Run(text[..cut]));
+        tb.Inlines.Add(new System.Windows.Documents.InlineUIContainer(new InfoTip { Text = text[(cut + 1)..].Trim() }) { BaselineAlignment = BaselineAlignment.Center });
+        return tb;
+    }
 
     private Button TestButton(string glyph, string text, Action click, bool accent = false)
     {
@@ -233,9 +267,12 @@ public partial class MainWindow
     private void BuildKeyboardTest()
     {
         _keyViews.Clear(); _keysDown.Clear(); _keysSeen.Clear(); _rollover = 0;
-        DeviceTestHost.Children.Add(TestText("Appuyez sur chaque touche : elle s'allume tant qu'elle est enfoncée, puis reste verte une fois testée. "
-            + "Appuyez sur plusieurs touches en même temps pour mesurer combien sont reconnues ensemble (utile pour les jeux). "
-            + "Certaines combinaisons (touche Windows, Impr. écran) sont gardées par Windows. Fermez avec le bouton en haut à droite."));
+        DeviceTestHost.Children.Add(TestText("Appuyez sur chaque touche : elle reste verte une fois testée. Pour quitter : deux fois Échap.\n"
+            + "Appuyez sur plusieurs touches ensemble pour savoir combien sont reconnues en même temps (utile pour les jeux). "
+            + "Certaines touches, comme Windows ou Impr. écran, sont gardées par Windows."));
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, () =>
+            Accessibility.AnnounceInstructions(DeviceTestHost, "Test du clavier. Appuyez sur une touche : son nom et sa fonction sont annoncés. "
+                + "Pour quitter, appuyez deux fois rapidement sur Échap."));
         var board = new StackPanel { Margin = new Thickness(0, 6, 0, 10) };
         foreach (var row in KeyRows)
         {
@@ -292,8 +329,54 @@ public partial class MainWindow
             view.Background = down ? (Brush)FindResource("Accent") : BrushOfStatic("#2A10B981");
             view.BorderBrush = down ? (Brush)FindResource("Accent") : BrushOfStatic("#10B981");
         }
+        if (down)
+            Accessibility.Announce(_keyStatus, $"{KeySpeech(key, scan)}. {_keysSeen.Count} touche{(_keysSeen.Count > 1 ? "s" : "")} testée{(_keysSeen.Count > 1 ? "s" : "")}"
+                + (_keysDown.Count > 1 ? $", {_keysDown.Count} touches enfoncées ensemble" : ""));
         _keyStatus.Text = $"Dernière touche : {KeyName(scan)} · {_keysSeen.Count} touche(s) testée(s) · jusqu'à {_rollover} touche(s) reconnue(s) en même temps"
             + (_rollover >= 6 ? " (très bien pour les jeux)" : _rollover >= 3 && _keysDown.Count == 0 ? "" : "");
+    }
+
+    /// <summary>Nom parlé d'une touche et sa fonction (« Retour arrière, efface le caractère précédent »).</summary>
+    private static string KeySpeech(Key key, int scan)
+    {
+        string fn = key switch
+        {
+            Key.Space => "Espace",
+            Key.Enter => (scan & 0xE000) != 0 ? "Entrée du pavé numérique, valide" : "Entrée, valide",
+            Key.Tab => "Tabulation, passe à l'élément suivant",
+            Key.Back => "Retour arrière, efface le caractère précédent",
+            Key.Delete => "Suppr, efface le caractère suivant ou l'élément choisi",
+            Key.Insert => "Inser, bascule entre insertion et remplacement",
+            Key.Escape => "Échap, annule ou ferme. Deux fois rapidement pour quitter le test",
+            Key.LeftShift => "Majuscule gauche, écrit en majuscule tant qu'elle est enfoncée",
+            Key.RightShift => "Majuscule droite, écrit en majuscule tant qu'elle est enfoncée",
+            Key.CapsLock => "Verrouillage des majuscules",
+            Key.LeftCtrl => "Contrôle gauche, pour les raccourcis",
+            Key.RightCtrl => "Contrôle droit, pour les raccourcis",
+            Key.LeftAlt => "Alt, pour les raccourcis et les menus",
+            Key.RightAlt => "Alt Gr, caractères spéciaux comme l'arobase ou l'euro",
+            Key.LWin or Key.RWin => "Touche Windows, ouvre le menu Démarrer",
+            Key.Apps => "Touche Menu, ouvre le menu d'options",
+            Key.Home => "Début, va au début de la ligne",
+            Key.End => "Fin, va à la fin de la ligne",
+            Key.PageUp => "Page précédente",
+            Key.PageDown => "Page suivante",
+            Key.Up => "Flèche haut", Key.Down => "Flèche bas", Key.Left => "Flèche gauche", Key.Right => "Flèche droite",
+            Key.NumLock => "Verrouillage du pavé numérique",
+            Key.Scroll => "Arrêt défilement",
+            Key.Pause => "Pause",
+            Key.PrintScreen or Key.Snapshot => "Impression écran, capture",
+            >= Key.F1 and <= Key.F24 => $"F{key - Key.F1 + 1}, touche de fonction",
+            >= Key.NumPad0 and <= Key.NumPad9 => $"{key - Key.NumPad0}, pavé numérique",
+            Key.Add => "Plus, pavé numérique", Key.Subtract => "Moins, pavé numérique", Key.Multiply => "Multiplier, pavé numérique",
+            Key.Divide => "Diviser, pavé numérique", Key.Decimal => "Point, pavé numérique",
+            >= Key.A and <= Key.Z => $"Lettre {(char)('A' + (key - Key.A))}",
+            >= Key.D0 and <= Key.D9 => $"Touche {KeyName(scan)}, chiffre {key - Key.D0} avec Majuscule",
+            Key.VolumeUp => "Volume plus", Key.VolumeDown => "Volume moins", Key.VolumeMute => "Couper le son",
+            Key.MediaPlayPause => "Lecture ou pause", Key.MediaNextTrack => "Piste suivante", Key.MediaPreviousTrack => "Piste précédente",
+            _ => null
+        };
+        return fn ?? $"Touche {KeyName(scan)}";
     }
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetKeyNameText(int lParam, System.Text.StringBuilder name, int size);
@@ -305,8 +388,8 @@ public partial class MainWindow
 
     private void BuildMouseTest()
     {
-        DeviceTestHost.Children.Add(TestText("Cliquez dans la zone avec chaque bouton, faites tourner la molette, puis bougez la souris rapidement en cercles pour mesurer sa fréquence. "
-            + "Un double clic qui apparaît alors que vous n'avez cliqué qu'une fois signale un bouton usé (rebond)."));
+        DeviceTestHost.Children.Add(TestText("Cliquez avec chaque bouton, tournez la molette, puis faites des cercles rapides. Pour quitter : Échap.\n"
+            + "Les cercles mesurent la fréquence de la souris. Un double clic qui apparaît après un seul clic signale un bouton usé."));
         var labels = new Dictionary<MouseButton, (string name, Border view, TextBlock count)>();
         var buttons = new WrapPanel { Margin = new Thickness(0, 0, 0, 10) };
         var counts = new Dictionary<MouseButton, int>();
@@ -340,8 +423,8 @@ public partial class MainWindow
         DeviceTestHost.Children.Add(buttons);
         // Boutons au-delà de 5 : la souris (ou son logiciel) les transforme en touches du clavier ; on affiche ce qu'ils envoient
         var extra = new List<string>();
-        var keysText = TestText("Autres boutons (côté, DPI, profil…) : appuyez dessus. S'ils envoient une touche ou un raccourci, il s'affiche ici. "
-            + "Un bouton qui ne montre rien peut agir directement dans la souris (le bouton DPI change la vitesse du pointeur) : bougez-la pour voir la différence.", 12.5);
+        var keysText = TestText("Autres boutons (côté, DPI…) : appuyez dessus, leur action s'affiche ici.\n"
+            + "Un bouton qui n'affiche rien peut agir dans la souris elle-même : le bouton DPI, par exemple, change la vitesse du pointeur.", 12.5);
         _mouseKey = e =>
         {
             var k = e.Key == Key.System ? e.SystemKey : e.Key;
@@ -351,20 +434,19 @@ public partial class MainWindow
                      + (mods.HasFlag(ModifierKeys.Windows) ? "Windows+" : "") + KeyLabel(k);
             extra.Remove(name);
             extra.Insert(0, name);
+            Accessibility.Announce(keysText, "Reçu : " + extra.FirstOrDefault());
             keysText.Text = "Reçu d'un bouton ou du clavier : " + string.Join(" · ", extra.Take(8)) + "  (le plus récent en premier)";
             keysText.Style = null;
         };
         var info = TestText("Molette : —", 13, subtle: false);
         var bounceText = TestText("Double clics involontaires : aucun", 13, subtle: false);
-        var rateText = TestText("Fréquence : bougez la souris dans la zone…", 13, subtle: false);
-        var zone = new Border
+        var rateText = TestText("Fréquence : bougez la souris…", 13, subtle: false);
+        // Pas de zone à viser : toute la fenêtre du test reçoit les clics, la molette et les mouvements (on ne voit pas
+        // forcément où l'on clique). Seul le bouton « Terminer » garde son rôle.
+        var zone = DeviceTestOverlay;
+        MouseButtonEventHandler onDown = (_, e) =>
         {
-            Height = 200, CornerRadius = new CornerRadius(14), Background = (Brush)FindResource("Surface2"), BorderBrush = (Brush)FindResource("Line"), BorderThickness = new Thickness(1),
-            Margin = new Thickness(0, 0, 0, 12), Cursor = Cursors.Cross,
-            Child = new TextBlock { Text = "Zone de test : cliquez, faites défiler, bougez", Style = (Style)FindResource("Subtle"), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center }
-        };
-        zone.PreviewMouseDown += (_, e) =>
-        {
+            if (e.OriginalSource is DependencyObject src0 && FindParent<System.Windows.Controls.Primitives.ButtonBase>(src0) != null) return;   // « Terminer »
             e.Handled = true;
             if (!labels.TryGetValue(e.ChangedButton, out var l)) return;
             var now = DateTime.UtcNow;
@@ -373,22 +455,27 @@ public partial class MainWindow
             {
                 bounces++;
                 bounceText.Text = $"Double clics involontaires : {bounces} (bouton {l.name.ToLowerInvariant()}) · le bouton est probablement usé";
+                Accessibility.Announce(zone, bounceText.Text, interrupt: false);
                 bounceText.Foreground = BrushOfStatic("#F59E0B");
             }
             last[e.ChangedButton] = now;
             counts[e.ChangedButton] = counts.GetValueOrDefault(e.ChangedButton) + 1;
             l.count.Text = $"{counts[e.ChangedButton]} clic(s)";
+            Accessibility.Announce(zone, $"Bouton {l.name} détecté, {counts[e.ChangedButton]} clic{(counts[e.ChangedButton] > 1 ? "s" : "")}");
             l.view.BorderBrush = BrushOfStatic("#10B981");
             l.view.Background = BrushOfStatic("#2A10B981");
         };
-        zone.PreviewMouseWheel += (_, e) =>
+        MouseWheelEventHandler onWheel = (_, e) =>
         {
             e.Handled = true;
             if (e.Delta > 0) wheelUp++; else wheelDown++;
             info.Text = $"Molette : {wheelUp} cran(s) vers le haut · {wheelDown} vers le bas" + (wheelUp > 0 && wheelDown > 0 ? " ✓" : "");
+            Accessibility.Announce(zone, e.Delta > 0 ? $"Molette vers le haut, {wheelUp}" : $"Molette vers le bas, {wheelDown}");
         };
-        zone.ContextMenuOpening += (_, e) => e.Handled = true;
-        DeviceTestHost.Children.Add(zone);
+        ContextMenuEventHandler noMenu = (_, e) => e.Handled = true;
+        zone.PreviewMouseDown += onDown;
+        zone.PreviewMouseWheel += onWheel;
+        zone.ContextMenuOpening += noMenu;
         DeviceTestHost.Children.Add(info);
         DeviceTestHost.Children.Add(bounceText);
         DeviceTestHost.Children.Add(rateText);
@@ -408,6 +495,7 @@ public partial class MainWindow
                 tiltCounts[dir] = tiltCounts.GetValueOrDefault(dir) + 1;
                 var (view, count) = tilt[dir];
                 count.Text = $"{tiltCounts[dir]} fois";
+                Accessibility.Announce(view, $"Molette inclinée {(dir < 0 ? "à gauche" : "à droite")}, {tiltCounts[dir]} fois");
                 view.BorderBrush = BrushOfStatic("#10B981");
                 view.Background = BrushOfStatic("#2A10B981");
                 handled = true;
@@ -430,10 +518,20 @@ public partial class MainWindow
         {
             timer.Stop();
             _mouseKey = null;
+            zone.PreviewMouseDown -= onDown;
+            zone.PreviewMouseWheel -= onWheel;
+            zone.ContextMenuOpening -= noMenu;
             src.RemoveHook(hook);
             var off = new RAWINPUTDEVICE[] { new() { UsagePage = 1, Usage = 2, Flags = 0x1, Target = IntPtr.Zero } };   // RIDEV_REMOVE
             RegisterRawInputDevices(off, 1, Marshal.SizeOf<RAWINPUTDEVICE>());
         };
+    }
+
+    private static T FindParent<T>(DependencyObject d) where T : DependencyObject
+    {
+        for (var p = d; p != null; p = p is Visual || p is System.Windows.Media.Media3D.Visual3D ? VisualTreeHelper.GetParent(p) : LogicalTreeHelper.GetParent(p))
+            if (p is T t) return t;
+        return null;
     }
 
     /// <summary>Nom lisible d'une touche (« Précédent du navigateur », « F13 », « A »).</summary>
@@ -489,8 +587,8 @@ public partial class MainWindow
 
     private void BuildSpeakersTest()
     {
-        DeviceTestHost.Children.Add(TestText("Toutes vos sorties audio branchées (casques, enceintes, écrans HDMI…). « Tester » joue un son sur cette sortie seulement : "
-            + "celle que vous entendez est la bonne. « Utiliser » la choisit pour Windows. « Tester l'une après l'autre » les essaie toutes à la suite."));
+        DeviceTestHost.Children.Add(TestText("« Tester » joue un son sur une sortie : celle que vous entendez est la bonne. « Utiliser » la choisit pour Windows.\n"
+            + "Toutes les sorties branchées sont listées : casques, enceintes, écrans HDMI… « Tester l'une après l'autre » les essaie toutes à la suite."));
         var outputs = AudioDevices.List(render: true);
         if (outputs.Count == 0)
         {
@@ -503,6 +601,7 @@ public partial class MainWindow
         foreach (var d in outputs)
         {
             var (row, right, state) = AudioRow(d);
+            Accessibility.Live(state);
             var dev = d;
             right.Children.Add(TestButton("", "Tester", async () =>
             {
@@ -534,7 +633,7 @@ public partial class MainWindow
 
         // Sur la sortie actuelle : gauche / droite, graves / aigus
         DeviceTestHost.Children.Add(new TextBlock { Text = "SUR LA SORTIE ACTUELLE", Foreground = (Brush)FindResource("Text2"), FontSize = 11, FontWeight = FontWeights.SemiBold, Margin = new Thickness(2, 12, 0, 8) });
-        DeviceTestHost.Children.Add(TestText("Vérifiez que le son sort du côté annoncé (sinon : casque à l'envers ou enceintes inversées), et qu'aucun haut-parleur ne grésille."));
+        DeviceTestHost.Children.Add(TestText("Vérifiez que le son sort du côté annoncé et qu'aucun haut-parleur ne grésille.\nSi les côtés sont inversés : casque à l'envers ou enceintes branchées à l'inverse."));
         var row1 = new WrapPanel();
         row1.Children.Add(TestButton("", "Gauche", () => _ = DeviceTests.PlayAsync(DeviceTests.Tone(440, 1.2, true, false))));
         row1.Children.Add(TestButton("", "Les deux", () => _ = DeviceTests.PlayAsync(DeviceTests.Tone(440, 1.2, true, true))));
@@ -555,8 +654,8 @@ public partial class MainWindow
     /// </summary>
     private void BuildMicTest()
     {
-        DeviceTestHost.Children.Add(TestText("Parlez normalement : tous vos micros sont écoutés en même temps. Celui dont la barre bouge reçoit votre voix ; "
-            + "Centre PC le repère et vous propose de l'utiliser. Rien n'est enregistré sans que vous le demandiez."));
+        DeviceTestHost.Children.Add(TestText("Parlez normalement : le micro dont la barre bouge reçoit votre voix.\n"
+            + "Tous vos micros sont écoutés en même temps. Centre PC repère le bon et propose de l'utiliser. Rien n'est enregistré sans que vous le demandiez."));
         var mics = AudioDevices.List(render: false);
         if (mics.Count == 0)
         {
@@ -564,7 +663,7 @@ public partial class MainWindow
             DeviceTestHost.Children.Add(TestButton("", "Paramètres du son", () => OpenTarget("ms-settings:sound")));
             return;
         }
-        var detected = TestText("En attente de votre voix…", 14, subtle: false);
+        var detected = Accessibility.Live(TestText("En attente de votre voix…", 14, subtle: false));
         var useDetected = new WrapPanel();
         var captures = new List<MicCapture>();
         var peaks = new Dictionary<AudioDevice, float>();
@@ -577,6 +676,7 @@ public partial class MainWindow
             bar.Width = 360;
             bar.HorizontalAlignment = HorizontalAlignment.Left;
             var (row, right, state) = AudioRow(d, bar);
+            Accessibility.Live(state);
             if (!d.IsDefault) right.Children.Add(UseButton(d, "mic"));
             list.Children.Add(row);
             peaks[d] = 0;
@@ -640,10 +740,10 @@ public partial class MainWindow
     // ================================================================== manette
     private void BuildGamepadTest()
     {
-        DeviceTestHost.Children.Add(TestText("Manettes Xbox et compatibles (la plupart des manettes PC) : appuyez sur les boutons, bougez les sticks et les gâchettes. "
-            + "Sticks relâchés, la valeur doit revenir près de 0 : sinon le stick « dérive » (personnage qui avance seul). "
+        DeviceTestHost.Children.Add(TestText("Appuyez sur les boutons, bougez les sticks et les gâchettes.\n"
+            + "Pour les manettes Xbox et compatibles. Sticks relâchés, la valeur doit revenir près de 0 ; sinon le stick « dérive » (le personnage avance seul). "
             + "Manette PlayStation ou autre : utilisez « Contrôleurs de jeu de Windows »."));
-        var status = TestText("Recherche d'une manette…", 14, subtle: false);
+        var status = Accessibility.Live(TestText("Recherche d'une manette…", 14, subtle: false), minSeconds: 6);
         DeviceTestHost.Children.Add(status);
         var pad = new Grid { Margin = new Thickness(0, 6, 0, 10) };
         pad.ColumnDefinitions.Add(new ColumnDefinition());
@@ -705,6 +805,7 @@ public partial class MainWindow
             text.Text = $"{name} : {mag * 100:0} %";
         }
         var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
+        var wasOn = new HashSet<ushort>();
         timer.Tick += (_, _) =>
         {
             DeviceTests.Gamepad? s = null;
@@ -716,6 +817,8 @@ public partial class MainWindow
             foreach (var (bit, _) in names)
             {
                 bool on = (p.Buttons & bit) != 0;
+                if (on && !wasOn.Contains(bit)) Accessibility.Announce(status, $"{names.First(n => n.Item1 == bit).Item2} détecté");
+                if (on) wasOn.Add(bit); else wasOn.Remove(bit);
                 if (on) seen.Add(bit);
                 btnViews[bit].Background = on ? (Brush)FindResource("Accent") : seen.Contains(bit) ? BrushOfStatic("#2A10B981") : (Brush)FindResource("Surface2");
                 btnViews[bit].BorderBrush = seen.Contains(bit) ? BrushOfStatic("#10B981") : (Brush)FindResource("Line");
@@ -732,9 +835,9 @@ public partial class MainWindow
     // ================================================================== vitesse du disque
     private void BuildDiskTest()
     {
-        DeviceTestHost.Children.Add(TestText("Mesure la vitesse réelle du disque choisi avec les tests de référence de CrystalDiskMark : séquentiel 1 Mio (8 accès en parallèle), "
-            + "aléatoire 4 Ko (32 en parallèle, puis un seul), en lecture et en écriture, sans le cache de Windows. Fichier temporaire de 1 Go supprimé à la fin ; environ 45 secondes. "
-            + "Le lien PCI Express des SSD NVMe est aussi vérifié."));
+        DeviceTestHost.Children.Add(TestText("Mesure la vitesse réelle du disque choisi, en environ 45 secondes.\n"
+            + "Mêmes tests que CrystalDiskMark : séquentiel 1 Mio (8 accès en parallèle), aléatoire 4 Ko (32 en parallèle, puis un seul), en lecture et en écriture, sans le cache de Windows. "
+            + "Un fichier temporaire de 1 Go est supprimé à la fin. Le branchement des SSD NVMe est aussi vérifié."));
         var drives = DriveInfo.GetDrives().Where(d => d.DriveType == DriveType.Fixed && d.IsReady && d.AvailableFreeSpace > 1L << 30).ToList();
         var pick = new WrapPanel { Margin = new Thickness(0, 0, 0, 8) };
         string chosen = drives.FirstOrDefault()?.Name;
@@ -748,7 +851,7 @@ public partial class MainWindow
             pick.Children.Add(rb);
         }
         DeviceTestHost.Children.Add(pick);
-        var status = TestText("", 13, subtle: false);
+        var status = Accessibility.Live(TestText("", 13, subtle: false), minSeconds: 2);
         var results = new StackPanel();
         var cts = new CancellationTokenSource();
         Button go = null;
@@ -769,7 +872,7 @@ public partial class MainWindow
                 results.Children.Add(ResultLine("Écriture 4K Q1 (RND4K Q1T1)", $"{r.RndQ1WriteMBs:0} Mo/s", r.RndQ1WriteMBs, 300));
                 var links = await Task.Run(DiskMark.PcieLinks);
                 foreach (var l in links)
-                    results.Children.Add(TestText($"{(l.Degraded ? "⚠ " : "✓ ")}{l.Disk} : {l.Text}" + (l.Degraded ? " — le SSD ne peut pas atteindre sa vitesse : emplacement M.2 partagé ou limité, voir le manuel de la carte mère." : ""), 12.5, subtle: !l.Degraded));
+                    results.Children.Add(TestText($"{(l.Degraded ? "⚠ " : "✓ ")}{l.Disk} : {l.Text}" + (l.Degraded ? " — le SSD ne peut pas atteindre sa vitesse.\nSon emplacement M.2 est partagé ou limité : voir le manuel de la carte mère." : ""), 12.5, subtle: !l.Degraded));
             }
             catch (OperationCanceledException) { status.Text = "Mesure annulée."; }
             catch (UnauthorizedAccessException) { status.Text = "Ce disque n'accepte pas l'écriture du fichier de test (droits insuffisants)."; }
@@ -803,9 +906,9 @@ public partial class MainWindow
     // ================================================================== vitesse d'Internet
     private void BuildNetTest()
     {
-        DeviceTestHost.Children.Add(TestText("Mesure la latence (réactivité, importante pour les jeux et les appels), le débit de téléchargement et d'envoi, "
-            + "avec les serveurs de test publics de Cloudflare. Environ 20 secondes ; environ 45 Mo sont échangés."));
-        var status = TestText("", 13, subtle: false);
+        DeviceTestHost.Children.Add(TestText("Mesure la réactivité et les débits de votre connexion, en environ 20 secondes.\n"
+            + "La réactivité (latence) compte pour les jeux et les appels. Le test utilise les serveurs publics de Cloudflare et échange environ 45 Mo."));
+        var status = Accessibility.Live(TestText("", 13, subtle: false), minSeconds: 2);
         var results = new StackPanel();
         var cts = new CancellationTokenSource();
         Button go = null;
@@ -877,7 +980,7 @@ public sealed class ScreenTestWindow : Window
         MouseRightButtonUp += (_, _) => Move(-1);
         KeyDown += (_, e) =>
         {
-            if (e.Key == Key.Escape) Close();
+            if (e.Key == Key.Escape) { Accessibility.StopInstructions(this, "Test de l'écran fermé"); Close(); }
             else if (e.Key is Key.Left or Key.Back) Move(-1);
             else Move(1);
         };

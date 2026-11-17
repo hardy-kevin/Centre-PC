@@ -5,6 +5,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Input;
@@ -27,8 +28,10 @@ public partial class MainWindow
         _online = await Network.IsOnlineAsync();
         ApplyOnlineState();
         if (!_online) { if (sender != this) ShowToast("Pas de connexion Internet : recherche impossible pour le moment."); return; }
+        bool follow = ScanButton.IsKeyboardFocused;
         ScanButton.IsEnabled = false;
         ScanButtonText.Text = "Recherche en cours…";
+        if (sender != this) Accessibility.Announce(ScanButton, "Recherche des mises à jour en cours. Cela peut prendre une minute.", interrupt: false);
         SumApps.Text = SumWu.Text = SumDrivers.Text = "…";
         SumAppsSub.Text = SumWuSub.Text = SumDriversSub.Text = "recherche…";
         DriversEmpty.Text = "Recherche des pilotes…";
@@ -86,6 +89,10 @@ public partial class MainWindow
         UpdateBadge();
         ScanButton.IsEnabled = true;
         ScanButtonText.Text = "Rechercher à nouveau";
+        if (follow) ScanButton.Focus();
+        if (sender != this)
+            Accessibility.Announce(ScanButton, $"Recherche terminée. Applications : {SumApps.Text}, {SumAppsSub.Text}. Windows Update : {SumWu.Text}, {SumWuSub.Text}. "
+                                               + $"Pilotes : {SumDrivers.Text}, {SumDriversSub.Text}.", interrupt: false);
     }
 
     private void ShowWingetSummary()
@@ -99,6 +106,7 @@ public partial class MainWindow
         int n = _winget.Count + _wu.Count(u => !u.Ignored) + _drivers.Count(d => d.CanSelect);
         UpdatesBadge.Visibility = n > 0 ? Visibility.Visible : Visibility.Collapsed;
         UpdatesBadgeText.Text = n.ToString();
+        AutomationProperties.SetName(UpdatesBadgeText, n == 1 ? "1 mise à jour disponible" : $"{n} mises à jour disponibles");
     }
 
     private void UpdateLastCheck()
@@ -323,6 +331,33 @@ public partial class MainWindow
         _tail.Tick += (_, _) => TailLog();
         _tail.Start();
         InstallCard.BringIntoView();
+        _spokenDone.Clear();
+        _lastSpokenNow = InstallHeadline.Text;
+        Accessibility.FollowText(InstallHeadline, $"Mise à jour lancée : {string.Join(", ", _steps.Select(s => s.Title))}.");
+    }
+
+    // ------------------------------------------------------------------ suivi parlé
+    private readonly HashSet<StepItem> _spokenDone = new();
+    private string _lastSpokenNow = "";
+
+    /// <summary>
+    /// Annonce, sans couper ce qui est en cours de lecture, chaque élément terminé (« Firefox : à jour ») et l'étape en
+    /// cours (« Mise à jour de Chrome, application 2 sur 5 »). Rien à faire pour l'entendre : pas besoin de se déplacer.
+    /// </summary>
+    private void SpeakInstallProgress()
+    {
+        if (!_installRunning) return;
+        var parts = new List<string>();
+        foreach (var s in _steps.Where(s => s.Key is not ("apps" or "drivers")).Concat(_appSteps).Concat(_driverSteps))
+        {
+            bool final = s is AppStep a ? a.IsDone : s.Status is not ("" or "En attente" or "En cours");
+            if (!final || !_spokenDone.Add(s)) continue;
+            parts.Add($"{s.Title} : {s.Status.ToLowerInvariant()}");
+        }
+        var counter = InstallCounter.Text.Replace(" / ", " sur ");
+        var now = InstallHeadline.Text + (counter.Length == 0 ? "" : ", " + (char.IsDigit(counter[0]) ? "étape " + counter : counter));
+        if (InstallHeadline.Text != _lastSpokenNow) { _lastSpokenNow = InstallHeadline.Text; parts.Add(now); }
+        if (parts.Count > 0) Accessibility.Announce(InstallPanel, string.Join(". ", parts), interrupt: false);
     }
 
     private void TailLog()
@@ -527,6 +562,7 @@ public partial class MainWindow
             InstallCounter.Text = $"{done} / {total}";
         }
         else if (_installRunning) InstallCounter.Text = $"{done} / {total}";
+        SpeakInstallProgress();
     }
 
     /// <summary>Rapport de fin : résultat global, compteurs, ce qui reste à faire, bureau.</summary>
@@ -547,9 +583,9 @@ public partial class MainWindow
                 Installer = m.Installer != null && File.Exists(m.Installer) ? m.Installer : null
             });
         foreach (var a in _driverSteps.Where(a => a.Status == "Échec"))
-            _report.Add(new ReportAction { Id = null, Name = a.Title, Message = $"Le pilote n'a pas pu être installé ({a.Detail}). Le périphérique conserve son pilote actuel et reste fonctionnel. Windows Update le proposera de nouveau ; en cas de nouvel échec, installez-le depuis le site du fabricant." });
+            _report.Add(new ReportAction { Id = null, Name = a.Title, Message = $"Le pilote n'a pas pu être installé ({a.Detail}). Le périphérique garde son pilote actuel et fonctionne. Si l'échec se répète, installez-le depuis le site du fabricant." });
         foreach (var a in _appSteps.Where(a => a.Status == "Échec" && !_report.Any(r => r.Id == a.Key)))
-            _report.Add(new ReportAction { Id = a.Key, Name = a.Title, Message = $"La mise à jour a échoué ({a.Detail}). Elle sera retentée lors de la prochaine mise à jour ; si l'échec persiste, mettez l'application à jour depuis l'application elle-même." });
+            _report.Add(new ReportAction { Id = a.Key, Name = a.Title, Message = $"La mise à jour a échoué ({a.Detail}). Elle sera retentée la prochaine fois. Si l'échec se répète, mettez à jour depuis l'application elle-même." });
 
         bool clean = !interrupted && todo + failed + stepErrors == 0;
         ReportGlyph.Text = clean ? "\uE73E" : interrupted || failed + stepErrors > 0 ? "\uE783" : "\uE7BA";
@@ -560,7 +596,7 @@ public partial class MainWindow
             : $"Mises à jour terminées — {_report.Count} actions requises";
         var when = DateTime.Now.ToString("HH:mm");
         ReportSummary.Text = interrupted
-            ? "Le programme de mise à jour s'est arrêté avant la fin. Les opérations effectuées sont conservées ; relancez la mise à jour pour terminer."
+            ? "La mise à jour s'est arrêtée avant la fin. Ce qui a été fait est conservé : relancez-la pour terminer."
             : (clean ? $"Terminé à {when}. Aucune action requise." : $"Terminé à {when}. Les autres opérations se sont déroulées correctement.")
               + (reboot ? " Un redémarrage est nécessaire pour finaliser." : "");
 
@@ -596,6 +632,12 @@ public partial class MainWindow
         InstallCounter.Text = "";
         InstallProgress.Value = InstallProgress.Maximum;
         InstallCard.BringIntoView();
+        // Le bilan est lu en entier ; si l'on suivait l'avancement, le focus passe sur le bilan
+        var counts = string.Join(", ", ReportCounts.Children.OfType<Border>().Select(b => (b.Child as TextBlock)?.Text).Where(t => !string.IsNullOrEmpty(t)));
+        var spoken = $"{ReportTitle.Text}. {ReportSummary.Text} {counts}." + (_report.Count > 0 ? " Les actions requises sont détaillées dessous." : "");
+        spoken = spoken.Replace("(s)", "");
+        if (InstallHeadline.IsKeyboardFocused) Accessibility.FollowText(ReportTitle, spoken);
+        else Accessibility.Announce(ReportCard, spoken, interrupt: false);
         ShowToast(ReportTitle.Text);
     }
 

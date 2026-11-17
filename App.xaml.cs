@@ -11,6 +11,13 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        // Garde de la lecture à la souris du Narrateur : attend la fin de Centre PC, même forcée, et remet l'option
+        if (e.Args.Length >= 2 && e.Args[0] == NarratorMouse.GuardArg)
+        {
+            NarratorMouse.RunGuard(e.Args[1]);
+            Shutdown();
+            return;
+        }
         // Vérification quotidienne (tâche planifiée) : rien à afficher sauf une notification
         if (e.Args.Contains("--check"))
         {
@@ -98,6 +105,7 @@ public partial class App : Application
         TaskScheduler.UnobservedTaskException += (_, a) => { Log.Error("Tâche en arrière-plan", a.Exception); a.SetObserved(); };
         AppDomain.CurrentDomain.ProcessExit += (_, _) => Settings.Flush();
         base.OnStartup(e);
+        Accessibility.Install();   // noms lisibles par les lecteurs d'écran, pour toute l'application
         Settings.Load();
         RemoteCatalog.LoadCached();   // copie locale du catalogue signé, revérifiée à chaque lancement
         var main = new MainWindow();

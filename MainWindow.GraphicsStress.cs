@@ -152,7 +152,7 @@ public partial class MainWindow
                                             BorderBrush = BrushOfStatic(fps / best >= 0.97 ? "#10B981" : "#F59E0B"),
                                             Child = new TextBlock { Text = $"Boucle {i + 1}\n{fps:0.0} img/s", FontSize = 11.5 } });
         DeviceTestHost.Children.Add(table);
-        DeviceTestHost.Children.Add(TestText("Score propre à Centre PC (scène et résolution différentes de 3DMark) ; la stabilité en % se lit comme celle de 3DMark.", 11.5));
+        DeviceTestHost.Children.Add(TestText("Score propre à Centre PC : comparez-le à vos propres mesures.\nLa scène et la résolution diffèrent de 3DMark ; la stabilité en % se lit de la même façon.", 11.5));
         DeviceTestHost.Children.Add(TestButton("", "Refaire un test", () => OpenDeviceTest("bench"), accent: true));
     }
 }

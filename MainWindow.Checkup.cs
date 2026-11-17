@@ -43,8 +43,8 @@ public partial class MainWindow
         var p = _ckPlan;
         int cores = Math.Max(1, CpuTopology.Cores().Count);
         var fixedDrives = DriveInfo.GetDrives().Where(d => d.DriveType == DriveType.Fixed && d.IsReady).ToList();
-        DeviceTestHost.Children.Add(TestText("Vérifie toute la machine et produit un rapport : un résumé clair pour le client et une annexe technique détaillée. "
-            + "Chaque bilan enregistre aussi un instantané de l'installation (Windows, mises à jour, pilotes, applications, mesures) : le suivant montre ce qui a changé entre les deux."));
+        DeviceTestHost.Children.Add(TestText("Vérifie tout le PC et produit un rapport clair, avec une annexe technique.\n"
+            + "Chaque bilan garde aussi une photo de l'installation (Windows, mises à jour, pilotes, applications, mesures) : le bilan suivant montre ce qui a changé."));
 
         DeviceTestHost.Children.Add(Section("Niveau"));
         DeviceTestHost.Children.Add(Choices(new List<(string, object)>
@@ -55,10 +55,10 @@ public partial class MainWindow
         }, p.Level, v => { _ckPlan = CkPlan.For((string)v); OpenDeviceTest("checkup"); }));
         DeviceTestHost.Children.Add(TestText(p.Level switch
         {
-            "Express" => "Contrôle rapide : santé, historique, performances. Idéal avant / après une intervention simple.",
-            "Approfondi" => "Protocole de validation des techniciens : stabilité mémoire + processeur 1 heure (façon OCCT), contrainte graphique 20 boucles (façon 3DMark, seuil 97 %), "
-                          + "endurance 20 min, chaque cœur, tous les disques façon CrystalDiskMark, températures processeur / carte graphique / VRM / SSD. Pour une nouvelle installation ou un PC instable.",
-            _ => "Bilan recommandé : tout est vérifié, avec 10 min de stabilité mémoire + processeur, une contrainte graphique de 10 boucles et 5 min d'endurance."
+            "Express" => "Contrôle rapide : santé, historique et performances.\nIdéal avant et après une intervention simple.",
+            "Approfondi" => "Pour un PC neuf ou instable : chaque composant est poussé longuement.\n"
+                          + "Stabilité mémoire et processeur 1 heure, contrainte graphique 20 boucles (seuil 97 %), endurance 20 min, chaque cœur, tous les disques, températures processeur, carte graphique, VRM et SSD.",
+            _ => "Recommandé : chaque point du PC est vérifié.\nStabilité mémoire et processeur 10 min, contrainte graphique 10 boucles, endurance 5 min."
         }, 12.5));
 
         DeviceTestHost.Children.Add(Section("Étapes"));
@@ -66,7 +66,7 @@ public partial class MainWindow
         var estimate = TestText("", 13, subtle: false);
         void Refresh() => estimate.Text = $"Durée estimée : environ {p.EstimateSeconds(cores, fixedDrives.Count) / 60 + 1} minutes.";
         void Step(string text, bool value, Action<bool> set) { var c = Check(text, value, v => { set(v); Refresh(); }); c.Margin = new Thickness(0, 0, 18, 8); steps.Children.Add(c); }
-        steps.Children.Add(new TextBlock { Text = "Toujours : inventaire, santé des périphériques, historique de stabilité (30 jours), instantané", Opacity = 0.75, Margin = new Thickness(0, 0, 0, 8), Width = 900, TextWrapping = TextWrapping.Wrap });
+        steps.Children.Add(new TextBlock { Text = "Toujours inclus : inventaire, santé des périphériques, stabilité des 30 derniers jours, photo de l'installation", Opacity = 0.75, Margin = new Thickness(0, 0, 0, 8), Width = 900, TextWrapping = TextWrapping.Wrap });
         Step($"Mesures au repos ({p.IdleSec} s)", p.Idle, v => p.Idle = v);
         Step("Processeur", p.Cpu, v => p.Cpu = v);
         Step("Mémoire vive (débit)", p.Ram, v => p.Ram = v);
@@ -84,10 +84,10 @@ public partial class MainWindow
         DeviceTestHost.Children.Add(Choices(new List<(string, object)> { ("10 min", 10), ("30 min", 30), ("1 heure", 60), ("2 heures", 120) }, p.MemMin, v => { p.MemMin = (int)v; OpenDeviceTest("checkup"); }));
         DeviceTestHost.Children.Add(TestText("Durée de l'endurance :", 12.5));
         DeviceTestHost.Children.Add(Choices(new List<(string, object)> { ("5 min", 5), ("10 min", 10), ("20 min", 20), ("30 min", 30) }, p.EnduranceMin, v => { p.EnduranceMin = (int)v; Refresh(); }));
-        var managed = Check("Température du processeur et ventilateurs avec HWiNFO (logiciel tiers, gratuit pour un usage personnel ; j'accepte sa licence), ou à défaut LibreHardwareMonitor (libre)", _benchManaged, v => _benchManaged = v);
+        var managed = Check("Mesurer la température et les ventilateurs avec HWiNFO (j'accepte sa licence) ou LibreHardwareMonitor", _benchManaged, v => _benchManaged = v);
         managed.Margin = new Thickness(0, 4, 0, 10);
         if (ThirdPartyTools) DeviceTestHost.Children.Add(managed);
-        else DeviceTestHost.Children.Add(TestText("Température du processeur et ventilateurs : ouvrez HWiNFO ou LibreHardwareMonitor avant de lancer le bilan pour les inclure.", 12.5));
+        else DeviceTestHost.Children.Add(TestText("Pour inclure la température du processeur, ouvrez HWiNFO ou LibreHardwareMonitor avant le bilan.", 12.5));
 
         DeviceTestHost.Children.Add(Section("Rapport"));
         var who = new WrapPanel();
@@ -96,6 +96,7 @@ public partial class MainWindow
             var sp = new StackPanel { Margin = new Thickness(0, 0, 16, 8) };
             sp.Children.Add(new TextBlock { Text = label, Opacity = 0.75, FontSize = 12, Margin = new Thickness(0, 0, 0, 4) });
             var t = new TextBox { Text = value ?? "", Width = 280 };
+            System.Windows.Automation.AutomationProperties.SetName(t, label);
             t.TextChanged += (_, _) => set(t.Text);
             sp.Children.Add(t);
             who.Children.Add(sp);
@@ -110,7 +111,7 @@ public partial class MainWindow
         DeviceTestHost.Children.Add(who);
         Refresh();
         DeviceTestHost.Children.Add(estimate);
-        DeviceTestHost.Children.Add(TestText("Le PC reste utilisable mais sera lent pendant les phases de charge : fermez jeux et applications lourdes pour des mesures fiables.", 12));
+        DeviceTestHost.Children.Add(TestText("Fermez jeux et applications lourdes : le PC sera lent pendant les mesures.", 12));
         DeviceTestHost.Children.Add(TestButton("", "Lancer le bilan", StartCheckup, accent: true));
 
         // Bilans précédents
@@ -238,6 +239,7 @@ public partial class MainWindow
             r.icon.Text = glyph; r.icon.Foreground = BrushOfStatic(c); r.text.FontWeight = FontWeights.Normal;
             r.text.Text = $"{n} — {result}";
             report.Op(n, result);
+            Accessibility.Announce(r.text, $"{n} : {result}", interrupt: false);   // chaque étape terminée est lue
         }
 
         // Charge mesurée seconde par seconde (capteurs, débits, sécurité)
@@ -832,6 +834,8 @@ public partial class MainWindow
         }
         var first = Pick(snaps.Count - 1);   // le plus ancien
         var second = Pick(0);                // le plus récent
+        System.Windows.Automation.AutomationProperties.SetName(first, "Premier bilan à comparer");
+        System.Windows.Automation.AutomationProperties.SetName(second, "Second bilan à comparer");
         row.Children.Add(TestButton("\uE8F4", "Comparer", () =>
         {
             if ((first.SelectedItem as ComboBoxItem)?.Tag is not MachineSnapshot a || (second.SelectedItem as ComboBoxItem)?.Tag is not MachineSnapshot b) return;
@@ -853,6 +857,7 @@ public partial class MainWindow
     private void ShowCheckupResult(CheckupReport report, string htmlPath)
     {
         _testCleanup = null;
+        Accessibility.Announce(DeviceTestHost, $"Bilan terminé : {report.VerdictTitle}. {report.Findings.Count(f => f.Level >= DeviceStatus.Warning)} point(s) à traiter.", interrupt: false);
         DeviceTestHost.Children.Clear();
         var color = report.Worst switch { DeviceStatus.Problem => "#EF4444", DeviceStatus.Warning => "#F59E0B", _ => "#10B981" };
         DeviceTestHost.Children.Add(new TextBlock { Text = report.VerdictTitle, FontSize = 20, FontWeight = FontWeights.SemiBold, Foreground = BrushOfStatic(color), Margin = new Thickness(0, 0, 0, 4), TextWrapping = TextWrapping.Wrap });

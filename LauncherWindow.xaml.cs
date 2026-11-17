@@ -68,6 +68,8 @@ public partial class LauncherWindow : Window
         _launch = launch;
         _openMain = openMain;
         InitializeComponent();
+        Accessibility.Watch(this);   // noms lisibles et icônes décoratives retirées de la lecture
+        Accessibility.SpeakOnHover(this);
         Deactivated += (_, _) => { if (!_menuOpen) HideLauncher(); };
         BuildCaptureMenu();
         PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape) { if (Query.Text.Length > 0) Query.Clear(); else HideLauncher(); e.Handled = true; } };
@@ -135,7 +137,7 @@ public partial class LauncherWindow : Window
             })
             .OrderBy(x => x.score).ThenBy(x => x.rank).ThenBy(x => x.a.Label, StringComparer.CurrentCultureIgnoreCase)
             .Take(40).Select(x => x.a).ToList();
-        var actions = RunAction == null ? new() : LauncherActions.Find(q);
+        var actions = RunAction == null ? new List<(string id, string label, string glyph)>() : LauncherActions.Find(q);
         foreach (var (id, label, glyph) in actions)
         {
             var row = ActionRow(id, label, glyph);
@@ -168,7 +170,7 @@ public partial class LauncherWindow : Window
         Grid.SetColumn(name, 1); grid.Children.Add(name);
         var cat = new TextBlock { Text = a.Theme, Style = (Style)FindResource("Subtle"), FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0) };
         Grid.SetColumn(cat, 2); grid.Children.Add(cat);
-        var row = new Border { CornerRadius = new CornerRadius(10), Padding = new Thickness(10, 7, 10, 7), Background = Brushes.Transparent, Child = grid, Cursor = Cursors.Hand };
+        var row = new ClickBorder { CornerRadius = new CornerRadius(10), Padding = new Thickness(10, 7, 10, 7), Background = Brushes.Transparent, Child = grid, Cursor = Cursors.Hand };
         row.MouseEnter += (_, _) => Select(_results.FindIndex(r => r.row == row));
         row.MouseLeftButtonUp += (_, _) => Open(a, row);
         return row;
@@ -190,7 +192,7 @@ public partial class LauncherWindow : Window
         Grid.SetColumn(name, 1); grid.Children.Add(name);
         var cat = new TextBlock { Text = "Centre PC", Style = (Style)FindResource("Subtle"), FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0) };
         Grid.SetColumn(cat, 2); grid.Children.Add(cat);
-        var row = new Border { CornerRadius = new CornerRadius(10), Padding = new Thickness(10, 7, 10, 7), Background = Brushes.Transparent, Child = grid, Cursor = Cursors.Hand };
+        var row = new ClickBorder { CornerRadius = new CornerRadius(10), Padding = new Thickness(10, 7, 10, 7), Background = Brushes.Transparent, Child = grid, Cursor = Cursors.Hand };
         row.MouseEnter += (_, _) => Select(_results.FindIndex(r => r.row == row));
         row.MouseLeftButtonUp += (_, _) => { HideLauncher(); RunAction?.Invoke(id); };
         return row;
@@ -255,7 +257,7 @@ public partial class LauncherWindow : Window
                 Child = new TextBlock { Text = a.Members.Count.ToString(), FontSize = 10, Foreground = Brushes.White }
             });
         }
-        var tile = new Border
+        var tile = new ClickBorder
         {
             Width = 98, Height = 88, CornerRadius = new CornerRadius(10), Padding = new Thickness(6, 8, 6, 4), Margin = new Thickness(0, 0, 4, 4),
             Background = Brushes.Transparent, Child = content, Cursor = Cursors.Hand,

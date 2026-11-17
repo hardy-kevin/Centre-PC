@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text.RegularExpressions;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -120,6 +121,7 @@ public partial class MainWindow
     {
         DevicesBadge.Visibility = count > 0 ? Visibility.Visible : Visibility.Collapsed;
         DevicesBadgeText.Text = count.ToString();
+        AutomationProperties.SetName(DevicesBadgeText, count == 1 ? "1 point à vérifier" : $"{count} points à vérifier");
     }
 
     private FrameworkElement DeviceCardView(DeviceCard c)
@@ -210,7 +212,13 @@ public partial class MainWindow
                     Settings.Save();
                     list.Children.Remove(row);
                     Label();
-                    ShowToast("Information masquée. Pour la revoir : Réglages › Réafficher les informations masquées.");
+                    ShowToast("Information masquée.", () =>
+                    {
+                        Settings.Current.HiddenDeviceNotes.Remove(note.Text);
+                        Settings.Save();
+                        _deviceViews.Clear();
+                        RenderDevices();
+                    });
                 });
                 list.Children.Add(row);
             }
@@ -296,7 +304,7 @@ public partial class MainWindow
             row.Children.Add(track);
             if (x.Path == null) { row.Margin = new Thickness(0, 12, 0, 0); sp.Children.Add(row); continue; }
             // Lecteur : clic pour l'ouvrir, clic droit pour ses options ; survol visible
-            var hit = new Border { Child = row, Padding = new Thickness(6, 6, 6, 8), Margin = new Thickness(-6, 4, -6, 0), CornerRadius = new CornerRadius(8),
+            var hit = new ClickBorder { Child = row, Padding = new Thickness(6, 6, 6, 8), Margin = new Thickness(-6, 4, -6, 0), CornerRadius = new CornerRadius(8),
                                    Background = Brushes.Transparent, Cursor = Cursors.Hand, ToolTip = "Clic : ouvrir le lecteur · clic droit : plus d'options",
                                    ContextMenu = DriveMenu(x) };
             row.Margin = new Thickness(0);

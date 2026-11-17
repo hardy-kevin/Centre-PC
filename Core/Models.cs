@@ -21,6 +21,9 @@ public enum ItemLocation { StartMenu, Store, Desktop, PublicDesktop, Stored }
 /// <summary>Une application (ou un fichier du bureau) affichée sous forme de tuile.</summary>
 public class AppItem : Observable
 {
+    /// <summary>Texte annoncé par les lecteurs d'écran pour cet élément de liste.</summary>
+    public override string ToString() => string.IsNullOrEmpty(Theme) ? Label : $"{Label}, {Theme}";
+
     public string Name { get; set; }
     /// <summary>Fichier (.lnk, .url, .exe, document...) ou null pour une application du Store.</summary>
     public string FilePath { get; set; }
@@ -85,6 +88,9 @@ public class AppItem : Observable
 
 public class WingetUpdate : Observable
 {
+    /// <summary>Texte annoncé par les lecteurs d'écran pour cet élément de liste.</summary>
+    public override string ToString() => $"{Name}, {Version} vers {Available}";
+
     public string Name { get; set; }
     public string Id { get; set; }
     public string Version { get; set; }
@@ -105,6 +111,9 @@ public class WingetUpdate : Observable
 /// <summary>Mise à jour de pilote proposée par Windows Update, présentée comme une application (version actuelle → nouvelle).</summary>
 public class DriverUpdate : Observable
 {
+    /// <summary>Texte annoncé par les lecteurs d'écran pour cet élément de liste.</summary>
+    public override string ToString() => Title ?? base.ToString();
+
     /// <summary>Identifiant Windows Update (pour installer exactement ce pilote).</summary>
     public string UpdateId { get; set; }
     public string Title { get; set; }
@@ -145,6 +154,9 @@ public class DriverUpdate : Observable
 /// <summary>Une mise à jour exclue (page Réglages).</summary>
 public class ExclusionRow
 {
+    /// <summary>Texte annoncé par les lecteurs d'écran pour cet élément de liste.</summary>
+    public override string ToString() => Label ?? Name;
+
     public string Name { get; set; }
     public string Label { get; set; }
     public string Kind { get; set; }   // app, driver
@@ -153,6 +165,9 @@ public class ExclusionRow
 
 public class WuUpdate
 {
+    /// <summary>Texte annoncé par les lecteurs d'écran pour cet élément de liste.</summary>
+    public override string ToString() => Title;
+
     public string Title { get; set; }
     public bool IsDriver { get; set; }
     public bool Ignored { get; set; }
@@ -163,6 +178,9 @@ public class WuUpdate
 
 public class StepItem : Observable
 {
+    /// <summary>Texte annoncé par les lecteurs d'écran pour cet élément de liste.</summary>
+    public override string ToString() => string.IsNullOrEmpty(Detail) ? $"{Title}, {Status}" : $"{Title}, {Status}, {Detail}";
+
     public string Key { get; set; }
     public string Title { get; set; }
     private string _status = "En attente";
@@ -210,6 +228,9 @@ public class ReportAction
 
 public class ThemeGroup
 {
+    /// <summary>Texte annoncé par les lecteurs d'écran pour cet élément de liste.</summary>
+    public override string ToString() => $"{Name}, {Count} application(s)";
+
     public string Name { get; set; }
     public List<AppItem> Items { get; set; }
     public int Count => Items.Count;
@@ -226,6 +247,9 @@ public class ThemeGroup
 /// <summary>Un choix manuel enregistré (page Réglages).</summary>
 public class ChoiceRow
 {
+    /// <summary>Texte annoncé par les lecteurs d'écran pour cet élément de liste.</summary>
+    public override string ToString() => Label ?? Name;
+
     public string Name { get; set; }
     public string Kind { get; set; }    // theme, hidden, skipped
     public string Label { get; set; }
@@ -235,6 +259,9 @@ public class ChoiceRow
 /// <summary>Une ligne de la liste des thèmes (page Réglages).</summary>
 public class ThemeRow
 {
+    /// <summary>Texte annoncé par les lecteurs d'écran pour cet élément de liste.</summary>
+    public override string ToString() => string.IsNullOrEmpty(Detail) ? Name : $"{Name}, {Detail}";
+
     public string Name { get; set; }
     public string Glyph { get; set; }
     public Brush Brush { get; set; }
@@ -243,6 +270,9 @@ public class ThemeRow
 
 public class InfoLine
 {
+    /// <summary>Texte annoncé par les lecteurs d'écran pour cet élément de liste.</summary>
+    public override string ToString() => $"{Label} : {Value}";
+
     public string Label { get; set; }
     public string Value { get; set; }
 }
@@ -250,6 +280,9 @@ public class InfoLine
 /// <summary>Une ligne du gestionnaire d'applications.</summary>
 public class ManagedAppRow : Observable
 {
+    /// <summary>Texte annoncé par les lecteurs d'écran pour cet élément de liste.</summary>
+    public override string ToString() => Name;
+
     public AppItem App { get; set; }
     public string Name => App.Name;
     /// <summary>Applications de la suite (désinstallées ensemble), ou l'application seule.</summary>

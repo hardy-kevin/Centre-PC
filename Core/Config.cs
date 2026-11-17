@@ -74,6 +74,10 @@ public class Config
     public bool StartWithWindows { get; set; }
     /// <summary>Démarrage avec Windows déjà proposé (annonce montrée une seule fois aux utilisateurs de l'accès rapide).</summary>
     public bool StartupAsked { get; set; }
+    /// <summary>Lecteur d'écran actif : l'élément sous la souris est lu à voix haute (sans clic).</summary>
+    public bool HoverSpeech { get; set; } = true;
+    /// <summary>Explication du clavier déjà entendue (donnée une seule fois, réécoutable dans Réglages).</summary>
+    public bool NavGuideHeard { get; set; }
     /// <summary>Catalogue distant signé (classement corrigé sans nouvelle version) : réglage, dernière vérification, dernière version acceptée.</summary>
     public bool RemoteCatalog { get; set; } = true;
     public DateTime? CatalogChecked { get; set; }

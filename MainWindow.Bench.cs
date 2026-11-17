@@ -60,18 +60,17 @@ public partial class MainWindow
             box.Children.Add(Choices(new List<(string, object)> { ("10 s par cœur", 10), ("30 s par cœur", 30), ("1 min par cœur", 60) }, _coreSeconds, v => _coreSeconds = (int)v)),
             "Lancer", StartCoreTest));
         if (gpus.Count > 0)
-            DeviceTestHost.Children.Add(TestRow("Contrainte graphique", "Rendu 3D lourd en boucle, comme 3DMark : 97 % de stabilité ou plus = la carte tient la charge.", "5 ou 20 min", box =>
+            DeviceTestHost.Children.Add(TestRow("Contrainte graphique", "Vérifie que la carte graphique tient une charge 3D prolongée.", "5 ou 20 min", box =>
                 box.Children.Add(Choices(new List<(string, object)> { ("10 boucles × 30 s", 10), ("20 boucles × 60 s (comme 3DMark)", 20) }, _stressLoops, v => _stressLoops = (int)v)),
                 "Lancer", StartGraphicsStress));
-        DeviceTestHost.Children.Add(TestRow("Stabilité mémoire et processeur", "Mémoire écrite, relue et vérifiée en boucle, processeur à fond, comme OCCT : zéro erreur en 1 heure = PC stable. À faire après avoir activé XMP / EXPO.", "15 min à 2 h", box =>
+        DeviceTestHost.Children.Add(TestRow("Stabilité mémoire et processeur", "Vérifie que la mémoire et le processeur ne font aucune erreur sous charge.", "15 min à 2 h", box =>
         {
             box.Children.Add(Choices(new List<(string, object)> { ("15 min", 15), ("30 min", 30), ("1 heure", 60), ("2 heures", 120) }, _stabMinutes, v => _stabMinutes = (int)v));
             box.Children.Add(Choices(new List<(string, object)> { ("Mémoire + processeur", "both"), ("Mémoire seule", "mem"), ("Processeur seul", "cpu") }, _stabMode, v => _stabMode = (string)v));
         }, "Lancer", StartStabilityTest));
-        if (ThirdPartyTools) DeviceTestHost.Children.Add(TestRow("Outils d'expert", "CPU-Z, GPU-Z, CrystalDiskInfo… installés le temps de l'utilisation, puis retirés à leur fermeture.", "en cas de doute", box =>
+        if (ThirdPartyTools) DeviceTestHost.Children.Add(TestRow("Outils d'expert", "CPU-Z, GPU-Z, CrystalDiskInfo… installés le temps de l'utilisation, puis retirés.", "en cas de doute", box =>
         {
-            box.Children.Add(TestText("Déjà installés, ils sont simplement ouverts et laissés en place. Logiciels tiers : en les ouvrant, vous acceptez la licence de leur éditeur "
-                + "(usage professionnel : voir Réglages › Usage professionnel).", 12.5));
+            box.Children.Add(TestText("En les ouvrant, vous acceptez la licence de leur éditeur.\nUn outil déjà installé est simplement ouvert et laissé en place. Usage professionnel : voir Réglages, Usage professionnel.", 12.5));
             var tools = new WrapPanel();
             foreach (var t in ToolSession.Tools)
             {
@@ -153,7 +152,7 @@ public partial class MainWindow
             panel.Children.Add(MonitorHelp(panel, gpus, monitor));
         }
         else if (monitor == null && !ThirdPartyTools)
-            Row(false, "Température du processeur et ventilateurs : non mesurées. Pour les ajouter, ouvrez HWiNFO ou LibreHardwareMonitor avant de lancer le test.");
+            Row(false, "Température du processeur et ventilateurs : non mesurées. Ouvrez HWiNFO ou LibreHardwareMonitor avant le test pour les ajouter.");
         else if (monitor == null)
         {
             // HWiNFO géré par Centre PC le temps du test
@@ -163,10 +162,10 @@ public partial class MainWindow
                 : "non mesurées (HWiNFO désactivé ci-dessous)."));
             var box = new StackPanel { Margin = new Thickness(18, 4, 0, 4) };
             box.Children.Add(Check("Mesurer avec HWiNFO pendant le test (Centre PC s'en occupe)", _benchManaged, v => { _benchManaged = v; _ = FillMeasuresAsync(panel, gpus); }));
-            box.Children.Add(TestText("HWiNFO est un logiciel de REALiX, gratuit pour un usage personnel ; un usage professionnel demande sa licence Pro. "
-                + "En cochant, vous acceptez sa licence. Windows demande une autorisation au lancement du test ; son pilote n'est actif que pendant le test"
-                + (installed ? ", et vos réglages HWiNFO sont remis à l'identique." : ", et rien ne reste sur le PC après.") + " Si HWiNFO ne peut pas être installé, Centre PC utilise à la place LibreHardwareMonitor (logiciel libre) et son pilote signé PawnIO, "
-                + "installés puis retirés de la même façon.", 11.5));
+            box.Children.Add(TestText("En cochant, vous acceptez la licence de HWiNFO (gratuit pour un usage personnel).\n"
+                + "Un usage professionnel demande sa licence Pro. Windows demande une autorisation au lancement du test. Son pilote n'est actif que pendant le test"
+                + (installed ? ", et vos réglages HWiNFO sont remis à l'identique." : ", et rien ne reste sur le PC après.") + " Si HWiNFO ne peut pas être installé, Centre PC utilise LibreHardwareMonitor (logiciel libre), "
+                + "installé puis retiré de la même façon.", 11.5));
             panel.Children.Add(box);
         }
         else Row(false, $"Température du processeur : non trouvée dans les mesures de {monitor}.");
@@ -184,21 +183,21 @@ public partial class MainWindow
         var buttons = new WrapPanel { Margin = new Thickness(0, 6, 0, 0) };
         var status = TestText("", 12.5);
         if (running == "HWiNFO")
-            box.Children.Add(TestText("HWiNFO est ouvert mais ne partage pas ses mesures : dans ses Réglages (clic droit sur son icône près de l'horloge), onglet « Général / Interface utilisateur », "
-                + "cochez « Prise en charge de la mémoire partagée » (« Shared Memory Support »), puis OK. Version gratuite : à recocher toutes les 12 heures.", 12.5));
+            box.Children.Add(TestText("Dans HWiNFO, activez « Prise en charge de la mémoire partagée ».\n"
+                + "Clic droit sur l'icône de HWiNFO près de l'horloge, Réglages, onglet « Général / Interface utilisateur », cochez « Prise en charge de la mémoire partagée » (« Shared Memory Support »), puis OK. En version gratuite, à recocher toutes les 12 heures.", 12.5));
         if (lhm != null)
             buttons.Children.Add(TestButton("", "Ouvrir LibreHardwareMonitor", () => OpenMonitor(lhm, "LibreHardwareMonitor", measures, gpus, status)));
         if (hw != null)
             buttons.Children.Add(TestButton("", "Ouvrir HWiNFO", () => OpenMonitor(hw, "HWiNFO", measures, gpus, status)));
         if (lhm == null && hw == null)
         {
-            box.Children.Add(TestText("Ces mesures demandent un pilote système, que Centre PC n'installe pas lui-même (sécurité, anti-triche des jeux). "
-                + "Vous pouvez installer l'un de ces programmes de surveillance reconnus ; Centre PC lira ses mesures pendant le test :", 12.5));
+            box.Children.Add(TestText("Installez l'un de ces programmes : Centre PC lira ses mesures pendant le test.\n"
+                + "Ces mesures demandent un pilote système, que Centre PC n'installe pas lui-même (sécurité, anti-triche des jeux).", 12.5));
             buttons.Children.Add(TestButton("", "Installer LibreHardwareMonitor", () => _ = InstallMonitorAsync("LibreHardwareMonitor.LibreHardwareMonitor", "lhm", measures, gpus, status)));
             buttons.Children.Add(TestButton("", "Installer HWiNFO", () => _ = InstallMonitorAsync("REALiX.HWiNFO", "hwinfo", measures, gpus, status)));
             box.Children.Add(buttons);
-            box.Children.Add(TestText("LibreHardwareMonitor : libre et gratuit, mesures partagées automatiquement ; il utilise le pilote PawnIO, refusé par l'anti-triche FACEIT "
-                + "(à désinstaller avant d'y jouer). HWiNFO : gratuit pour un usage personnel ; dans ses Réglages, cochez « Prise en charge de la mémoire partagée » (à recocher toutes les 12 heures en version gratuite) ; laissez « Pilote persistant » décoché : son pilote est alors retiré quand HWiNFO est fermé.", 11.5));
+            box.Children.Add(TestText("LibreHardwareMonitor est le plus simple : libre, gratuit, sans réglage.\n"
+                + "LibreHardwareMonitor utilise le pilote PawnIO, refusé par l'anti-triche FACEIT : à désinstaller avant d'y jouer. HWiNFO est gratuit pour un usage personnel ; dans ses Réglages, cochez « Prise en charge de la mémoire partagée » (à recocher toutes les 12 heures en version gratuite) et laissez « Pilote persistant » décoché.", 11.5));
         }
         else box.Children.Add(buttons);
         box.Children.Add(status);
@@ -251,7 +250,7 @@ public partial class MainWindow
             });
             if (!ready) return;
             _monitorWatch.Stop();
-            ShowToast($"Mesures de {name} détectées : température du processeur et ventilateurs inclus. Vous pouvez réduire sa fenêtre.");
+            ShowToast($"{name} détecté : température et ventilateurs inclus.");
             await FillMeasuresAsync(measures, gpus);
         };
         _monitorWatch.Start();
@@ -341,7 +340,7 @@ public partial class MainWindow
                 _sensorIssue = message;
                 session.Stop(); _hwinfo = null;
                 title.Text = "Température du processeur indisponible";
-                detail.Text = message + " Le test peut se faire sans : tout le reste sera mesuré. Vous pouvez aussi ouvrir HWiNFO ou LibreHardwareMonitor vous-même, puis relancer.";
+                detail.Text = message + " Le test peut se faire sans : tout le reste sera mesuré.";
                 return;
             }
             // HWiNFO refermé avant que ses mesures arrivent : le test démarre sans lui (le script remet tout en ordre)
@@ -349,7 +348,7 @@ public partial class MainWindow
             {
                 Log.Info("Capteurs gérés : fermés avant le test (" + state + ")");
                 _sensorIssue = "Le programme de capteurs s'est fermé avant de fournir ses mesures.";
-                ShowToast("Les capteurs se sont fermés avant de fournir leurs mesures : le test démarre sans la température du processeur.");
+                ShowToast("Capteurs indisponibles : le test démarre sans la température du processeur.");
                 _hwinfo = null;
                 Go();
                 return;
@@ -659,7 +658,7 @@ public partial class MainWindow
             if (run.GpuUsage.Count >= 5 && run.GpuUsage.Average() < 80)
                 points.Add((DeviceStatus.Info, $"La carte graphique n'a été chargée qu'à {run.GpuUsage.Average():0} % en moyenne : une autre application l'utilisait peut-être."));
             if (!run.Endurance)
-                points.Add((DeviceStatus.Info, "Mesure courte (15 secondes) : la carte n'a pas le temps de chauffer. Pour vérifier son refroidissement, lancez le test d'endurance."));
+                points.Add((DeviceStatus.Info, "Mesure courte : la carte n'a pas le temps de chauffer. Pour vérifier son refroidissement, lancez le test d'endurance."));
             if (run.Endurance && drop > 10)
                 points.Add((DeviceStatus.Warning, $"La carte graphique a perdu {drop:0} % de performance au fil du test" + (run.GpuThrottle != null ? $" (bridée : {run.GpuThrottle})." : " (chaleur ou limite de puissance).")));
             else if (run.Endurance)
@@ -696,6 +695,7 @@ public partial class MainWindow
             _ => (partial ? "Test partiel" : run.Endurance ? "Installation validée" : "Mesure terminée", "#10B981")
         };
         DeviceTestHost.Children.Add(new TextBlock { Text = title, FontSize = 20, FontWeight = FontWeights.SemiBold, Foreground = BrushOfStatic(color), Margin = new Thickness(0, 0, 0, 12) });
+        Accessibility.Announce(DeviceTestHost, "Test terminé : " + title, interrupt: false);
         foreach (var (level, text) in points)
         {
             var (_, c, glyph) = StatusLook(level);
@@ -715,8 +715,8 @@ public partial class MainWindow
         if (r.GpuTflops > 0) DeviceTestHost.Children.Add(TestText($"{r.Gpu} : " + Cmp(r.GpuTflops, previous?.GpuTflops, "TFLOPS", "0.00")
             + (r.GpuMemGBs > 0 ? $" · mémoire vidéo {r.GpuMemGBs:0} Go/s" : "") + (r.GpuUsageAvg is double ua ? $" · chargée à {ua:0} % en moyenne" : "")
             + (run.GpuPowerMax is double pm ? $" · jusqu'à {pm:0} W" : ""), 13, subtle: false));
-        DeviceTestHost.Children.Add(TestText("GFLOPS / TFLOPS : milliards / billions de calculs par seconde, mesurés par Centre PC. Utiles pour comparer vos propres mesures "
-            + "(avant / après un réglage, un nettoyage, un nouveau pilote) ; d'autres logiciels de test utilisent d'autres calculs.", 11.5));
+        DeviceTestHost.Children.Add(TestText("Ces scores servent à comparer vos propres mesures dans le temps.\n"
+            + "GFLOPS et TFLOPS : milliards et billions de calculs par seconde, mesurés par Centre PC. Comparez avant et après un réglage, un nettoyage ou un nouveau pilote. D'autres logiciels de test utilisent d'autres calculs.", 11.5));
         var again = new WrapPanel { Margin = new Thickness(0, 8, 0, 0) };
         again.Children.Add(TestButton("", "Refaire un test", () => OpenDeviceTest("bench"), accent: true));
         DeviceTestHost.Children.Add(again);
@@ -775,10 +775,14 @@ public partial class MainWindow
         "<ControlTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' TargetType='Button'>"
         + "<Border Background='Transparent'><ContentPresenter/></Border></ControlTemplate>");
 
-    private TextBlock Section(string text) => new()
+    private TextBlock Section(string text)
     {
-        Text = text.ToUpperInvariant(), FontSize = 11.5, FontWeight = FontWeights.SemiBold, Opacity = 0.7, Margin = new Thickness(0, 14, 0, 8)
-    };
+        var t = new TextBlock { Text = text.ToUpperInvariant(), FontSize = 11.5, FontWeight = FontWeights.SemiBold, Opacity = 0.85, Margin = new Thickness(0, 14, 0, 8) };
+        // Annoncé comme titre, et sans les majuscules (épelées lettre à lettre par certains lecteurs d'écran)
+        System.Windows.Automation.AutomationProperties.SetHeadingLevel(t, System.Windows.Automation.AutomationHeadingLevel.Level3);
+        System.Windows.Automation.AutomationProperties.SetName(t, text);
+        return t;
+    }
 
     /// <summary>Choix exclusif sous forme de pastilles.</summary>
     private WrapPanel Choices(List<(string label, object value)> items, object current, Action<object> pick)

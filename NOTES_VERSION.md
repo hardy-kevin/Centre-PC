@@ -1,3 +1,3 @@
-## Centre PC 1.2.5
+## Centre PC 1.2.6
 
-- Rangement du projet
+- Correction de la désinstallation

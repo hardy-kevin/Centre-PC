@@ -110,7 +110,7 @@ public partial class MainWindow
                 var row = UsageRow(System.IO.Path.GetFileName(p), size, node.Size, bmax, false, () => DocumentLibrary.ShowInExplorer(p), p);
                 host.Children.Add(row);
             }
-            host.Children.Add(TestText("Un clic affiche le fichier dans l'Explorateur. Ne supprimez que ce que vous reconnaissez : les fichiers de Windows et des programmes sont nécessaires.", 12));
+            host.Children.Add(TestText("Un clic affiche le fichier dans l'Explorateur. Ne supprimez que ce que vous reconnaissez.\nLes fichiers de Windows et des programmes sont nécessaires au bon fonctionnement du PC.", 12));
         }
     }
 

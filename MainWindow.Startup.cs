@@ -69,7 +69,12 @@ public partial class MainWindow
                     if (err != null) { ShowToast(err); return; }
                     Paint();
                     Summary();
-                    ShowToast(e.Enabled ? $"« {e.Name} » se lancera de nouveau au démarrage." : $"« {e.Name} » ne se lancera plus au démarrage. « Réactiver » annule.");
+                    ShowToast(e.Enabled ? $"« {e.Name} » se lancera de nouveau au démarrage." : $"« {e.Name} » ne se lancera plus au démarrage.", () =>
+                    {
+                        if (StartupPrograms.SetEnabled(e, !e.Enabled) is string undoErr) { ShowToast(undoErr); return; }
+                        Paint();
+                        Summary();
+                    });
                 });
             action.VerticalAlignment = VerticalAlignment.Center;
             Grid.SetColumn(action, 1);
@@ -78,6 +83,6 @@ public partial class MainWindow
             list.Children.Add(new Border { Style = (Style)FindResource("Card"), Padding = new Thickness(16, 10, 12, 10), Margin = new Thickness(0, 0, 0, 8), Child = grid });
         }
         if (entries.Count > 0)
-            DeviceTestHost.Children.Add(TestText("Même liste que l'onglet « Démarrage » du Gestionnaire des tâches. Les services et les tâches planifiées n'y figurent pas.", 12));
+            DeviceTestHost.Children.Add(TestText("Programmes lancés à l'ouverture de session.\nMême liste que l'onglet « Démarrage » du Gestionnaire des tâches. Les services et les tâches planifiées n'y figurent pas.", 12));
     }
 }

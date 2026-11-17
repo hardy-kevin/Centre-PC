@@ -70,7 +70,8 @@ public static class BackgroundCheck
 
     public static void Remove()
     {
-        try { Updates.RunAsync("schtasks.exe", $"/Delete /TN \"{TaskName}\" /F").GetAwaiter().GetResult(); } catch { }
+        // Task.Run : appelé depuis le fil de l'interface (désinstallation), une attente directe bloquerait Centre PC pour toujours
+        try { Task.Run(() => Updates.RunAsync("schtasks.exe", $"/Delete /TN \"{TaskName}\" /F")).Wait(TimeSpan.FromSeconds(15)); } catch { }
         try { Registry.CurrentUser.DeleteSubKeyTree($@"Software\Classes\AppUserModelId\{Aumid}", false); } catch { }
         try { Registry.CurrentUser.DeleteSubKeyTree($@"Software\Classes\{Protocol}", false); } catch { }
     }

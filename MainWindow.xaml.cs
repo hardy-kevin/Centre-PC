@@ -80,7 +80,7 @@ public partial class MainWindow : Window
     {
         if (_started) return;   // déjà lancé en arrière-plan (démarrage avec Windows), la fenêtre s'affiche seulement maintenant
         _started = true;
-        SearchBox.Focus();
+        FocusStart();
         if (!Settings.Current.OnboardingDone) { WelcomeOverlay.Visibility = Visibility.Visible; _launchScreen = true; }
         ApplyOnlineState();
         if (App.OpenUpdatesPage) ShowUpdatesPage();
@@ -91,6 +91,10 @@ public partial class MainWindow : Window
         await ReloadAsync();
         MaybeOfferQuickAccess();
         _ = ScanDevicesLaterAsync();   // pastille « Périphériques », sans faire attendre
+        Accessibility.Watch(this);
+        InitKeyboardNav();
+        Accessibility.SpeakOnHover(this);
+        Accessibility.DumpIfRequested(this);
         // Retours d'expérience (sans effet sans accord) : au démarrage, puis toutes les heures — l'envoi lui-même reste
         // limité à une fois par jour. Centre PC reste souvent ouvert des jours entiers près de l'horloge.
         _ = Feedback.SendAsync(DateTime.Now);
@@ -202,9 +206,9 @@ public partial class MainWindow : Window
 
         int tidyable = _desk.Count(d => d.OnDesktop && !d.Keep && (d.IsShortcut || Settings.Current.TidyFiles));   // les fichiers passent par « Ranger mes fichiers »
         DeskHint.Text = tidyable > 0
-            ? "Vos icônes ne sont pas supprimées : rangées, elles restent accessibles dans Applications et reviennent en un clic."
-            : "Le bureau est net. Vos icônes sont dans Applications, et reviennent en un clic.";
-        StoredLabel.Text = DesktopManager.FoldersMode ? "rangées dans des dossiers, sur le bureau" : "rangées (visibles dans Applications)";
+            ? "Rangez votre bureau sans rien supprimer : les icônes restent dans Applications."
+            : "Le bureau est net. Vos icônes sont dans Applications.";
+        StoredLabel.Text = DesktopManager.FoldersMode ? "rangées dans des dossiers, sur le bureau" : "rangées dans Applications";
         RefreshHistory();
         UpdateDeskOptions();
         UpdateDocsBadge();
@@ -267,7 +271,7 @@ public partial class MainWindow : Window
         WelcomeOverlay.Visibility = Visibility.Collapsed;
         Settings.Current.OnboardingDone = true;
         Settings.Save();
-        SearchBox.Focus();
+        FocusStart();
         MaybeOfferQuickAccess();
     }
 
@@ -307,22 +311,63 @@ public partial class MainWindow : Window
         foreach (var p in new FrameworkElement[] { PageApps, PageDesktop, PageDocuments, PageUpdates, PageDevices, PageSettings })
             p.Visibility = p == page ? Visibility.Visible : Visibility.Collapsed;
         page.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(220)));
-        if (tag == "apps") SearchBox.Focus();
+        if (tag == "apps" && !Accessibility.ScreenReaderRunning) SearchBox.Focus();
+    }
+
+    /// <summary>
+    /// Point de départ : avec un lecteur d'écran, le premier menu (on sait tout de suite où l'on est) ; sinon la
+    /// recherche, pour taper directement le nom d'une application.
+    /// </summary>
+    private void FocusStart()
+    {
+        if (Accessibility.ScreenReaderRunning) NavPages[0].Focus();
+        else SearchBox.Focus();
     }
 
     private DispatcherTimer _toastTimer;
-    private void ShowToast(string text)
+    private Action _toastUndo;
+
+    /// <summary>
+    /// Message éphémère. Il reste affiché le temps de le lire (selon sa longueur), et tant que la souris est dessus.
+    /// Avec <paramref name="undo"/>, un bouton « Annuler » défait l'action qui vient d'être faite.
+    /// </summary>
+    private void ShowToast(string text, Action undo = null, string undoLabel = "Annuler")
     {
         ToastText.Text = text;
+        // Lu aussitôt par le lecteur d'écran (zone « en direct »), sans déplacer le focus
+        try { System.Windows.Automation.Peers.UIElementAutomationPeer.CreatePeerForElement(ToastText)?.RaiseAutomationEvent(System.Windows.Automation.Peers.AutomationEvents.LiveRegionChanged); } catch { }
+        _toastUndo = undo;
+        ToastAction.Content = undoLabel;
+        ToastAction.Visibility = undo != null ? Visibility.Visible : Visibility.Collapsed;
+        Toast.IsHitTestVisible = undo != null;   // sans bouton, le message ne gêne jamais un clic en dessous
         Toast.BeginAnimation(OpacityProperty, new DoubleAnimation(1, TimeSpan.FromMilliseconds(150)));
         _toastTimer?.Stop();
-        _toastTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2.8) };
+        _toastTimer = new DispatcherTimer { Interval = ToastDuration(text, undo != null) };
         _toastTimer.Tick += (_, _) =>
         {
-            _toastTimer.Stop();
-            Toast.BeginAnimation(OpacityProperty, new DoubleAnimation(0, TimeSpan.FromMilliseconds(300)));
+            if (Toast.IsMouseOver) return;   // en cours de lecture ou sur le point de cliquer « Annuler »
+            HideToast();
         };
         _toastTimer.Start();
+    }
+
+    /// <summary>Environ 15 caractères lus par seconde, entre 2,8 et 8 secondes ; au moins 6 secondes pour pouvoir annuler.</summary>
+    internal static TimeSpan ToastDuration(string text, bool undoable) =>
+        TimeSpan.FromSeconds(Math.Clamp(1.5 + (text?.Length ?? 0) / 15.0, undoable ? 6 : 2.8, 8));
+
+    private void HideToast()
+    {
+        _toastTimer?.Stop();
+        _toastUndo = null;
+        Toast.IsHitTestVisible = false;
+        Toast.BeginAnimation(OpacityProperty, new DoubleAnimation(0, TimeSpan.FromMilliseconds(300)));
+    }
+
+    private void ToastAction_Click(object sender, RoutedEventArgs e)
+    {
+        var undo = _toastUndo;
+        HideToast();
+        undo?.Invoke();
     }
 
     private void Min_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;

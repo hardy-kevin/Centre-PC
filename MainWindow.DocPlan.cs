@@ -21,8 +21,8 @@ public partial class MainWindow
     private bool _planBusy;
 
     private const string Reassurance =
-        "Rien n'est supprimé ni renommé : les éléments sont seulement déplacés, et chacun peut retrouver son emplacement d'origine en un clic, " +
-        "maintenant ou plus tard (Bureau › Historique, 30 jours). Ce que vous refusez ne vous sera plus proposé. Vos propres dossiers sont réutilisés en priorité.";
+        "Les éléments sont seulement déplacés. Chacun peut revenir à sa place en un clic pendant 30 jours (Bureau, Historique). " +
+        "Ce que vous refusez ne vous sera plus proposé. Vos propres dossiers sont utilisés en priorité.";
 
     private List<string> InstalledNames() =>
         _apps.Select(a => a.Name).Concat(_apps.Select(a => a.Publisher).Where(p => !string.IsNullOrEmpty(p)))
@@ -67,8 +67,7 @@ public partial class MainWindow
         if (items == 0 && _planManual.Count == 0 && !hasOwn && !snoozed && _planSuggested.Count > 0)
         {
             DocPlanTitle.Text = "Préparez votre arborescence";
-            DocPlanText.Text = "Rien n'est à ranger pour l'instant. Centre PC peut créer à l'avance des dossiers adaptés à ce que l'on garde "
-                + "habituellement sur un PC (papiers administratifs, études, photos, captures d'écran, enregistrements…). Vous choisissez lesquels.";
+            DocPlanText.Text = "Rien à ranger pour l'instant. Centre PC peut créer à l'avance des dossiers utiles : papiers, études, photos, captures d'écran… Vous choisissez lesquels.";
             DocPlanButton.Content = "Choisir mes dossiers";
             DocPlanCard.Visibility = Visibility.Visible;
         }
@@ -134,8 +133,8 @@ public partial class MainWindow
         int total = _plan.Sum(f => f.Items.Count) + _planManual.Count;
         DocPlanOverlayTitle.Text = hasItems ? $"Ranger {Plural(total, "élément", "éléments")}" : "Préparer mon arborescence";
         DocPlanOverlayText.Text = hasItems
-            ? "Choisissez un élément à gauche : vous voyez d'où il vient et où il ira. Décochez ce qui doit rester où il est."
-              + (_planManual.Count > 0 ? " Les éléments sans dossier évident attendent à la fin de la liste : c'est vous qui choisissez." : "")
+            ? "Choisissez un élément à gauche pour voir d'où il vient et où il ira."
+              + (_planManual.Count > 0 ? " Les éléments sans dossier évident sont en fin de liste : à vous de choisir." : "")
             : "Cochez les dossiers à créer. Vous pourrez les renommer, en ajouter ou en retirer ensuite.";
         DocPlanReassurance.Text = hasItems
             ? "Réversible : rien n'est supprimé ni renommé, chaque élément peut retrouver sa place en un clic."
@@ -146,6 +145,8 @@ public partial class MainWindow
         if (hasItems)
         {
             _planCurrent = null;
+            _planMulti.Clear();
+            _showMulti = false;
             BuildPlanItems();
             // Aperçus nets préparés en arrière-plan, dans l'ordre de la liste : l'agrandissement sera immédiat
             _ = DocPreview.PrewarmAsync(_planOrder.Where(x => !x.IsFolder).Select(x => x.Source).ToList());
@@ -174,15 +175,13 @@ public partial class MainWindow
         {
             var folder = f;
             var (name, _) = SplitLabel(f.Label);
-            var gcheck = new CheckBox { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0), ToolTip = "Tout cocher ou décocher pour ce dossier" };
+            var gcheck = new CheckBox { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0), ToolTip = "Sélectionner tout ce dossier" };
+            System.Windows.Automation.AutomationProperties.SetName(gcheck, "Sélectionner tout " + name);
             gcheck.Click += (_, _) =>
             {
-                bool on = gcheck.IsChecked == true;
-                foreach (var it in folder.Items) it.Selected = on;
-                foreach (var it in folder.Items) RefreshPlanItem(it, rebuildDetail: false);
-                SyncGroup(folder);
-                BuildPlanDetail();
-                UpdatePlanFooter();
+                bool on = folder.Items.Any(it => !_planMulti.Contains(it));
+                foreach (var it in folder.Items) if (on) _planMulti.Add(it); else _planMulti.Remove(it);
+                ChecksChanged();
             };
             _planGroupChecks[f] = gcheck;
             var head = new Grid { Margin = new Thickness(8, _planOrder.Count == 0 ? 6 : 14, 8, 4) };
@@ -208,7 +207,7 @@ public partial class MainWindow
         {
             // File « à ranger vous-même » : aucun cas prévu, Centre PC ne devine pas
             var head = new Grid { Margin = new Thickness(8, _planOrder.Count == 0 ? 6 : 18, 8, 4),
-                                  ToolTip = "Pas de proposition : choisissez un dossier pour chaque élément, ou ne le rangez pas. Ce que vous ne traitez pas maintenant attend ici." };
+                                  ToolTip = "Pas de proposition : choisissez un dossier pour chaque élément, ou laissez-le en place. Ce que vous ne traitez pas maintenant attend ici." };
             head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             head.ColumnDefinitions.Add(new ColumnDefinition());
             var g = new TextBlock { Text = "\uE70F", Style = (Style)FindResource("Glyph"), FontSize = 14, VerticalAlignment = VerticalAlignment.Center,
@@ -230,16 +229,16 @@ public partial class MainWindow
     private void SyncGroup(DocFolderPlan f)
     {
         if (!_planGroupChecks.TryGetValue(f, out var c)) return;
-        int on = f.Items.Count(i => i.Selected);
-        f.Selected = on > 0;
+        f.Selected = f.Items.Any(i => i.Selected);
+        int on = f.Items.Count(_planMulti.Contains);
         c.IsChecked = on == f.Items.Count ? true : on == 0 ? false : null;
     }
 
     private FrameworkElement PlanItemRow(DocProposal p)
     {
-        var check = new CheckBox { IsChecked = p.Selected, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0),
-                                   ToolTip = "Décochez pour ne pas ranger cet élément" };
-        if (p.IsManual) { check.Visibility = Visibility.Hidden; check.IsHitTestVisible = false; }   // rien à cocher tant qu'aucun dossier n'est choisi
+        var check = new CheckBox { IsChecked = _planMulti.Contains(p), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0),
+                                   ToolTip = "Sélectionner pour agir sur plusieurs éléments à la fois" };
+        System.Windows.Automation.AutomationProperties.SetName(check, "Sélectionner " + p.Name);
         var thumb = Thumb(p, 32, 48);
         thumb.Margin = new Thickness(0, 0, 10, 0);
         var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
@@ -254,14 +253,14 @@ public partial class MainWindow
         grid.Children.Add(check);
         Grid.SetColumn(thumb, 1); grid.Children.Add(thumb);
         Grid.SetColumn(text, 2); grid.Children.Add(text);
-        var row = new Border { CornerRadius = new CornerRadius(8), Padding = new Thickness(8, 6, 8, 6), Margin = new Thickness(0, 0, 0, 2),
+        var row = new ClickBorder { CornerRadius = new CornerRadius(8), Padding = new Thickness(8, 6, 8, 6), Margin = new Thickness(0, 0, 0, 2),
                                Background = Brushes.Transparent, Child = grid, Cursor = Cursors.Hand };
         row.MouseLeftButtonUp += (_, e) =>
         {
             if (e.OriginalSource is DependencyObject d && IsInside(d, check)) return;
-            SelectPlanItem(p);
+            ClickPlanItem(p, Keyboard.Modifiers);
         };
-        check.Click += (_, _) => { p.Selected = check.IsChecked == true; RefreshPlanItem(p); };
+        check.Click += (_, _) => { if (check.IsChecked == true) _planMulti.Add(p); else _planMulti.Remove(p); _planAnchor = p; ChecksChanged(); };
         _planRows[p] = (row, check, dest);
         RefreshPlanItem(p, rebuildDetail: false, footer: false);
         return row;
@@ -271,7 +270,7 @@ public partial class MainWindow
     private void RefreshPlanItem(DocProposal p, bool rebuildDetail = true, bool footer = true)
     {
         if (!_planRows.TryGetValue(p, out var r)) return;
-        r.check.IsChecked = p.Selected;
+        r.check.IsChecked = _planMulti.Contains(p);
         if (p.Trash)
         {
             r.dest.Text = "→ Corbeille";
@@ -293,13 +292,115 @@ public partial class MainWindow
         if (footer) UpdatePlanFooter();
     }
 
+    // ------------------------------------------------------------------ sélection multiple (cases à cocher)
+    /// <summary>Éléments cochés : les actions du panneau de droite s'appliquent à tous (cases, Ctrl / Maj + clic, Ctrl + A).</summary>
+    private readonly HashSet<DocProposal> _planMulti = new();
+    private DocProposal _planAnchor;
+    /// <summary>Le panneau de droite montre la sélection (vrai) ou l'élément cliqué (faux).</summary>
+    private bool _showMulti;
+
+    private List<DocProposal> PlanSelection => _planOrder.Where(_planMulti.Contains).ToList();
+
+    /// <summary>Clic sur un élément : son détail ; Ctrl le coche ou le décoche ; Maj coche toute la plage depuis le précédent.</summary>
+    private void ClickPlanItem(DocProposal p, ModifierKeys mods)
+    {
+        if (mods.HasFlag(ModifierKeys.Shift) && _planAnchor != null && _planOrder.Contains(_planAnchor))
+        {
+            int a = _planOrder.IndexOf(_planAnchor), b = _planOrder.IndexOf(p);
+            for (int i = Math.Min(a, b); i <= Math.Max(a, b); i++) _planMulti.Add(_planOrder[i]);
+            _planCurrent = p;
+            ChecksChanged();
+            return;
+        }
+        if (mods.HasFlag(ModifierKeys.Control))
+        {
+            if (!_planMulti.Remove(p)) _planMulti.Add(p);
+            _planAnchor = p;
+            _planCurrent = p;
+            ChecksChanged();
+            return;
+        }
+        _planAnchor = p;
+        SelectPlanItem(p);
+    }
+
+    private void SelectAllPlanItems()
+    {
+        bool all = _planOrder.All(_planMulti.Contains);
+        _planMulti.Clear();
+        if (!all) foreach (var p in _planOrder) _planMulti.Add(p);
+        ChecksChanged();
+    }
+
+    /// <summary>Après un changement de cases : lignes, cases des dossiers, panneau de droite et annonce.</summary>
+    private void ChecksChanged()
+    {
+        _planMulti.RemoveWhere(x => !_planOrder.Contains(x));
+        foreach (var (item, r) in _planRows) r.check.IsChecked = _planMulti.Contains(item);
+        foreach (var f in _planGroupChecks.Keys.ToList()) SyncGroup(f);
+        _showMulti = _planMulti.Count > 0;
+        BuildPlanDetail();
+        Accessibility.Announce(DocPlanDetail, _planMulti.Count == 0 ? "Aucun élément sélectionné"
+            : _planMulti.Count == 1 ? "1 élément sélectionné" : $"{_planMulti.Count} éléments sélectionnés");
+    }
+
     private void SelectPlanItem(DocProposal p)
     {
+        _planMulti.RemoveWhere(x => !_planOrder.Contains(x));
+        _showMulti = false;
         _planCurrent = p;
         var highlight = new SolidColorBrush(Color.FromArgb(0x40, 0x7C, 0x5C, 0xFF));
         foreach (var (item, r) in _planRows) r.row.Background = item == p ? highlight : Brushes.Transparent;
         if (p != null && _planRows.TryGetValue(p, out var sel)) sel.row.BringIntoView();
         BuildPlanDetail();
+    }
+
+    /// <summary>Panneau de droite quand plusieurs éléments sont sélectionnés : les mêmes actions, pour tous.</summary>
+    private void BuildMultiDetail(List<DocProposal> sel)
+    {
+        var box = new StackPanel();
+        box.Children.Add(new TextBlock { Text = sel.Count == 1 ? "1 élément sélectionné" : $"{sel.Count} éléments sélectionnés", Style = (Style)FindResource("SectionTitle"), FontSize = 18 });
+        var names = string.Join(", ", sel.Take(6).Select(x => x.Name)) + (sel.Count > 6 ? $" et {sel.Count - 6} autre{(sel.Count - 6 > 1 ? "s" : "")}" : "");
+        box.Children.Add(new TextBlock { Text = names, Style = (Style)FindResource("Subtle"), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 16) });
+
+        int moving = sel.Count(x => !x.Trash && (x.IsManual ? !x.Keep : x.Selected)), trash = sel.Count(x => x.Trash);
+        var state = new List<string>();
+        if (moving > 0) state.Add($"{moving} à ranger");
+        if (sel.Count - moving - trash > 0) state.Add($"{sel.Count - moving - trash} laissé{(sel.Count - moving - trash > 1 ? "s" : "")} en place");
+        if (trash > 0) state.Add($"{trash} à la Corbeille");
+        box.Children.Add(new TextBlock { Text = string.Join(" · ", state), FontSize = 13, Margin = new Thickness(0, 0, 0, 12) });
+
+        var folder = new Button { Style = (Style)FindResource("AccentButton"), Content = "Ranger dans…", Padding = new Thickness(14, 6, 14, 6),
+                                  ToolTip = "Choisir un même dossier pour tous les éléments sélectionnés" };
+        folder.Click += (s, _) => ShowDestinationMenu((Button)s, null, sel[0], path => ChangeDestinationMany(sel, path));
+        var acts = new List<Button> { folder };
+        if (sel.Any(x => x.Trash || (x.IsManual ? x.Keep : !x.Selected)) && sel.Any(x => !x.IsManual || x.Keep))
+            acts.Add(SmallButton("\uE73E", "Ranger", (_, _) => ApplyToSelection(sel, x => { x.Trash = false; if (x.IsManual) x.Keep = false; else x.Selected = true; }),
+                                 tip: "Ranger les éléments sélectionnés dans le dossier proposé"));
+        acts.Add(SmallButton("\uE711", "Ne pas ranger", (_, _) => ApplyToSelection(sel, x => { x.Trash = false; if (x.IsManual) x.Keep = true; else x.Selected = false; }),
+                             tip: "Ne seront pas déplacés et ne vous seront plus proposés"));
+        acts.Add(trash == sel.Count
+            ? SmallButton("\uE7A7", "Ne pas supprimer", (_, _) => ApplyToSelection(sel, x => x.Trash = false))
+            : SmallButton("\uE74D", "Supprimer", (_, _) => ApplyToSelection(sel, x => x.Trash = true),
+                          tip: "Envoyés à la Corbeille de Windows quand vous validez (récupérables) · touche Suppr"));
+        acts.Add(SmallButton("\uE8E6", "Désélectionner", (_, _) => { _planMulti.Clear(); ChecksChanged(); }));
+        box.Children.Add(Actions(acts.ToArray()));
+        DocPlanDetail.Children.Add(box);
+    }
+
+    private void ApplyToSelection(List<DocProposal> sel, Action<DocProposal> change)
+    {
+        foreach (var x in sel) { change(x); RefreshPlanItem(x, rebuildDetail: false, footer: false); }
+        UpdatePlanFooter();
+        BuildPlanDetail();
+    }
+
+    private void ChangeDestinationMany(List<DocProposal> sel, string path)
+    {
+        foreach (var x in sel) ChangeDestination(x, path, rebuild: false);
+        BuildPlanItems();
+        ChecksChanged();
+        ShowToast($"{sel.Count} éléments seront rangés dans {DocPlanner.FriendlyDir(path)}.");
     }
 
     /// <summary>Aperçu (miniature de l'Explorateur, sinon icône) avec un symbole en attendant.</summary>
@@ -377,6 +478,7 @@ public partial class MainWindow
     private void BuildPlanDetail()
     {
         DocPlanDetail.Children.Clear();
+        if (_showMulti && _planMulti.Count > 0) { BuildMultiDetail(PlanSelection); return; }
         var p = _planCurrent;
         if (p == null) return;
 
@@ -668,15 +770,18 @@ public partial class MainWindow
     }
 
     /// <summary>Autre destination : dossiers du plan, vos dossiers, ou un nouveau dossier.</summary>
-    private void ShowPlanDestinationMenu(Button anchor, DocProposal p)
+    private void ShowPlanDestinationMenu(Button anchor, DocProposal p) =>
+        ShowDestinationMenu(anchor, p.IsManual ? null : p.Destination, p, path => ChangeDestination(p, path));
+
+    private void ShowDestinationMenu(Button anchor, string exclude, DocProposal p, Action<string> apply)
     {
         var menu = new ContextMenu();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        if (!p.IsManual) seen.Add(p.Destination);
+        if (exclude != null) seen.Add(exclude);
         foreach (var f in _plan.Where(f => seen.Add(f.Path)))
         {
             var target = f.Path;
-            menu.Items.Add(MakeItem(f.Label, "\uE8B7", () => ChangeDestination(p, target)));
+            menu.Items.Add(MakeItem(f.Label, "\uE8B7", () => apply(target)));
         }
         var mine = DocumentLibrary.Folders().Where(f => !string.IsNullOrEmpty(f.Path) && seen.Add(f.Path)).ToList();
         if (mine.Count > 0)
@@ -685,7 +790,7 @@ public partial class MainWindow
             foreach (var f in mine)
             {
                 var target = f.Path;
-                menu.Items.Add(MakeItem(f.Label, f.Depth == 0 ? f.Root.Glyph : "\uE8B7", () => ChangeDestination(p, target)));
+                menu.Items.Add(MakeItem(f.Label, f.Depth == 0 ? f.Root.Glyph : "\uE8B7", () => apply(target)));
             }
         }
         menu.Items.Add(new Separator());
@@ -693,13 +798,13 @@ public partial class MainWindow
         {
             var root = DocumentLibrary.Roots.First(r => r.Key == DocumentLibrary.SuggestRoot(p.Source, p.IsFolder));
             var path = await NewFolderAsync(root.Path, root.Name + " (saisissez « Jeux\\Dofus » pour créer un sous-dossier)");
-            if (path != null) ChangeDestination(p, path);
+            if (path != null) apply(path);
         }));
         menu.PlacementTarget = anchor;
         menu.IsOpen = true;
     }
 
-    private void ChangeDestination(DocProposal p, string path)
+    private void ChangeDestination(DocProposal p, string path, bool rebuild = true)
     {
         var from = FolderOf(p);
         from?.Items.Remove(p);
@@ -718,6 +823,7 @@ public partial class MainWindow
         p.Reason = "choisi par vous";
         p.Selected = true;
         to.Items.Add(p);
+        if (!rebuild) return;
         _planCurrent = p;
         BuildPlanItems();
     }
@@ -845,13 +951,19 @@ public partial class MainWindow
             foreach (var ic in itemChecks) ic.IsChecked = on;
             SyncFolder();
         };
-        head.MouseLeftButtonUp += (_, e) =>
+        // Ligne dépliable au clavier (Entrée) comme à la souris ; son état est annoncé
+        box.Children.Remove(head);
+        var headBox = new ClickBorder { Child = head, Background = Brushes.Transparent, CornerRadius = new CornerRadius(8), Cursor = Cursors.Hand };
+        System.Windows.Automation.AutomationProperties.SetHelpText(headBox, "replié");
+        box.Children.Insert(0, headBox);
+        headBox.MouseLeftButtonUp += (_, e) =>
         {
             if (e.OriginalSource is DependencyObject d && IsInside(d, check)) return;
             bool open = list.Visibility != Visibility.Visible;
             list.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
             chevron.Text = open ? "\uE70E" : "\uE70D";
             head.ToolTip = open ? "Masquer les éléments" : "Afficher les éléments";
+            System.Windows.Automation.AutomationProperties.SetHelpText(headBox, open ? "déplié" : "replié");
         };
         box.Children.Add(list);
         return Row(box);
@@ -954,10 +1066,10 @@ public partial class MainWindow
         DocPlanSplit.Visibility = Visibility.Collapsed;
         DocPlanScroll.Visibility = Visibility.Visible;
         DocPlanOverlayTitle.Text = "Rangé récemment";
-        DocPlanOverlayText.Text = "Rangé : chaque élément est dans le dossier indiqué. « Annuler » le replace exactement où il était.";
+        DocPlanOverlayText.Text = "Chaque élément est dans le dossier indiqué. « Annuler » le replace où il était.";
         DocPlanReassurance.ToolTip = null;
-        DocPlanReassurance.Text = "Rien à valider : sans action de votre part, le rangement est conservé. Un élément annulé ne vous sera plus proposé. "
-            + "Vous pouvez aussi terminer la vérification plus tard : ces éléments restent listés sur la page Documents.";
+        DocPlanReassurance.Text = "Rien à valider : le rangement est conservé. Un élément annulé ne vous sera plus proposé. "
+            + "Vous pouvez terminer plus tard depuis la page Documents.";
         BuildReviewList();
         DocPlanOverlay.Visibility = Visibility.Visible;
     }
@@ -971,6 +1083,7 @@ public partial class MainWindow
             ShowToast("Vérification terminée.");
             return;
         }
+        _reviewSel.RemoveWhere(x => !review.Contains(x));
         DocPlanList.Children.Clear();
         foreach (var g in review.GroupBy(e => e.Folder))
         {
@@ -987,7 +1100,34 @@ public partial class MainWindow
             foreach (var e in g) DocPlanList.Children.Add(ReviewRow(e));
         }
         DocPlanSummary.Text = review.Count == 1 ? "1 élément rangé récemment." : $"{review.Count} éléments rangés récemment.";
+        BuildReviewButtons();
+    }
+
+    // ------------------------------------------------------------------ sélection multiple (Rangé récemment)
+    private readonly HashSet<DocReviewEntry> _reviewSel = new();
+
+    /// <summary>Boutons du bas : pour la sélection s'il y en a une, sinon pour tout.</summary>
+    private void BuildReviewButtons()
+    {
         DocPlanButtons.Children.Clear();
+        if (_reviewSel.Count > 0)
+        {
+            var sel = Settings.Current.DocReview.Where(_reviewSel.Contains).ToList();
+            string n = sel.Count.ToString();
+            DocPlanSummary.Text = sel.Count == 1 ? "1 élément sélectionné." : $"{n} éléments sélectionnés.";
+            var clear = new Button { Style = (Style)FindResource("BaseButton"), Content = "Désélectionner", Margin = new Thickness(0, 0, 10, 0) };
+            clear.Click += (_, _) => { _reviewSel.Clear(); BuildReviewList(); };
+            var undo = new Button { Style = (Style)FindResource("BaseButton"), Content = $"Annuler ({n})", Margin = new Thickness(0, 0, 10, 0),
+                                    ToolTip = "Les éléments sélectionnés retournent où ils étaient ; ils ne vous seront plus proposés" };
+            undo.Click += (_, _) => { _reviewSel.Clear(); RejectMany(sel); };
+            var other = new Button { Style = (Style)FindResource("BaseButton"), Content = $"Autre dossier… ({n})", Margin = new Thickness(0, 0, 10, 0),
+                                     ToolTip = "Ranger les éléments sélectionnés dans un autre dossier" };
+            other.Click += (s, _) => ShowMoveElsewhereMenu((Button)s, sel);
+            var keep = new Button { Style = (Style)FindResource("AccentButton"), Content = $"Garder ({n})" };
+            keep.Click += (_, _) => { foreach (var x in sel) DocPlanner.Accept(x); _reviewSel.Clear(); BuildReviewList(); };
+            foreach (var b in new[] { clear, undo, other, keep }) DocPlanButtons.Children.Add(b);
+            return;
+        }
         var back = new Button { Style = (Style)FindResource("BaseButton"), Content = "Tout annuler", Margin = new Thickness(0, 0, 10, 0), ToolTip = "Chaque élément retourne exactement où il était" };
         back.Click += (_, _) => RejectMany(Settings.Current.DocReview.ToList());
         var ok = new Button { Style = (Style)FindResource("AccentButton"), Content = "Tout est bon" };
@@ -999,9 +1139,21 @@ public partial class MainWindow
     private FrameworkElement ReviewRow(DocReviewEntry e)
     {
         var grid = new Grid();
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition());
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var pick = new CheckBox { IsChecked = _reviewSel.Contains(e), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 12, 0),
+                                  ToolTip = "Sélectionner pour traiter plusieurs éléments ensemble" };
+        System.Windows.Automation.AutomationProperties.SetName(pick, "Sélectionner " + e.Name);
+        pick.Click += (_, _) =>
+        {
+            if (pick.IsChecked == true) _reviewSel.Add(e); else _reviewSel.Remove(e);
+            BuildReviewButtons();
+            if (_reviewSel.Count == 0) DocPlanSummary.Text = Settings.Current.DocReview.Count == 1 ? "1 élément rangé récemment." : $"{Settings.Current.DocReview.Count} éléments rangés récemment.";
+        };
+        grid.Children.Add(pick);
         var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+        Grid.SetColumn(text, 1);
         text.Children.Add(new TextBlock { Text = e.Name, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis, ToolTip = e.To });
         text.Children.Add(new TextBlock
         {
@@ -1018,7 +1170,7 @@ public partial class MainWindow
         other.Click += (s, _) => ShowMoveElsewhereMenu((Button)s, e);
         var open = SmallButton("\uE838", null, (_, _) => DocumentLibrary.ShowInExplorer(e.To), tip: "Voir dans l'Explorateur");
         foreach (var b in new[] { keep, back, other, open }) { b.Margin = new Thickness(6, 0, 0, 0); acts.Children.Add(b); }
-        Grid.SetColumn(acts, 1);
+        Grid.SetColumn(acts, 2);
         grid.Children.Add(acts);
         return Row(grid);
     }
@@ -1034,31 +1186,43 @@ public partial class MainWindow
         BuildReviewList();
     }
 
-    private void ShowMoveElsewhereMenu(Button anchor, DocReviewEntry e)
+    private void ShowMoveElsewhereMenu(Button anchor, DocReviewEntry e) => ShowMoveElsewhereMenu(anchor, new List<DocReviewEntry> { e });
+
+    private void ShowMoveElsewhereMenu(Button anchor, List<DocReviewEntry> entries)
     {
+        if (entries.Count == 0) return;
+        var e = entries[0];
         var menu = new ContextMenu();
+        var current = entries.Select(x => System.IO.Path.GetDirectoryName(x.To)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         foreach (var f in DocumentLibrary.Folders().Where(f => !string.IsNullOrEmpty(f.Path)
-                     && !string.Equals(f.Path, System.IO.Path.GetDirectoryName(e.To), StringComparison.OrdinalIgnoreCase)))
+                     && !(current.Count == 1 && string.Equals(f.Path, current[0], StringComparison.OrdinalIgnoreCase))))
         {
             var folder = f;
-            menu.Items.Add(MakeItem(folder.Label, folder.Depth == 0 ? folder.Root.Glyph : "", () => MoveReviewed(e, folder.Path)));
+            menu.Items.Add(MakeItem(folder.Label, folder.Depth == 0 ? folder.Root.Glyph : "", () => MoveReviewed(entries, folder.Path)));
         }
         menu.Items.Add(new Separator());
         menu.Items.Add(MakeItem("Nouveau dossier…", "", async () =>
         {
             var root = DocumentLibrary.Roots.First(r => r.Key == DocumentLibrary.SuggestRoot(e.To, e.IsFolder));
             var path = await NewFolderAsync(root.Path, root.Name + " (saisissez « Jeux\\Dofus » pour créer un sous-dossier)");
-            if (path != null) MoveReviewed(e, path);
+            if (path != null) MoveReviewed(entries, path);
         }));
         menu.PlacementTarget = anchor;
         menu.IsOpen = true;
     }
 
-    private void MoveReviewed(DocReviewEntry e, string folder)
+    private void MoveReviewed(List<DocReviewEntry> entries, string folder)
     {
-        var err = DocPlanner.MoveElsewhere(e, folder);
-        if (err != null) ShowToast("Déplacement impossible : " + err);
-        else ShowToast($"« {e.Name} » rangé dans {DocPlanner.FriendlyDir(folder)}.");
+        string err = null;
+        int ok = 0;
+        foreach (var e in entries)
+        {
+            var r = DocPlanner.MoveElsewhere(e, folder);
+            if (r != null) err ??= r; else ok++;
+        }
+        _reviewSel.Clear();
+        if (err != null) ShowToast($"Déplacement impossible{(entries.Count > 1 ? $" pour {entries.Count - ok} élément(s)" : "")} : " + err);
+        else ShowToast(entries.Count == 1 ? $"« {entries[0].Name} » rangé dans {DocPlanner.FriendlyDir(folder)}." : $"{ok} éléments rangés dans {DocPlanner.FriendlyDir(folder)}.");
         BuildReviewList();
     }
 
@@ -1081,9 +1245,28 @@ public partial class MainWindow
             ShowZoom(_planCurrent);
             return true;
         }
+        if (DocPlanSplit.Visibility == Visibility.Visible && key == Key.A && Keyboard.Modifiers == ModifierKeys.Control)
+        {
+            SelectAllPlanItems();
+            return true;
+        }
         if (DocPlanSplit.Visibility == Visibility.Visible && key is Key.Up or Key.Down)
         {
+            if (Keyboard.Modifiers == ModifierKeys.Shift)
+            {
+                // Maj + flèches : étend la sélection
+                int i = _planOrder.IndexOf(_planCurrent) + (key == Key.Up ? -1 : 1);
+                if (i >= 0 && i < _planOrder.Count) ClickPlanItem(_planOrder[i], ModifierKeys.Shift);
+                return true;
+            }
             MovePlanSelection(key == Key.Up ? -1 : 1);
+            return true;
+        }
+        if (DocPlanSplit.Visibility == Visibility.Visible && key == Key.Delete && _showMulti && _planMulti.Count > 0)
+        {
+            var sel = PlanSelection;
+            bool all = sel.All(x => x.Trash);
+            ApplyToSelection(sel, x => x.Trash = !all);
             return true;
         }
         if (DocPlanSplit.Visibility == Visibility.Visible && key == Key.Delete && _planCurrent != null)

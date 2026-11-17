@@ -342,6 +342,23 @@ public partial class MainWindow
 
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        // Lecteur d'écran : la première touche lance l'explication de départ ; rien ne réagit tant qu'elle dure
+        if (NavGuideGate()) { e.Handled = true; return; }
+        // Menu > sections > éléments, aux flèches (voir MainWindow.KeyboardNav.cs)
+        if (KeyboardNav(e)) { e.Handled = true; return; }
+        // Ctrl+1 à Ctrl+6 : aller directement à une page (le focus va sur son entrée du menu, qui est annoncée)
+        if (Keyboard.Modifiers == ModifierKeys.Control && !Overlays.Any(o => o.Visibility == Visibility.Visible))
+        {
+            int page = e.Key is >= Key.D1 and <= Key.D6 ? e.Key - Key.D1 : e.Key is >= Key.NumPad1 and <= Key.NumPad6 ? e.Key - Key.NumPad1 : -1;
+            if (page >= 0)
+            {
+                var nav = new[] { NavApps, NavDesktop, NavDocuments, NavUpdates, NavDevices, NavSettings }[page];
+                nav.IsChecked = true;
+                nav.Focus();
+                e.Handled = true;
+                return;
+            }
+        }
         if (WelcomeOverlay.Visibility == Visibility.Visible)
         {
             if (e.Key is Key.Enter or Key.Escape) { Welcome_Click(this, null); e.Handled = true; }
@@ -477,6 +494,24 @@ public partial class MainWindow
             ShowToast($"Lancement de {a.Label}…");
         }
         catch (Exception ex) { ShowToast($"Impossible de lancer {a.Name} : {ex.Message}"); }
+    }
+
+    /// <summary>Touche Menu ou Maj+F10 sur une tuile : même menu que le clic droit (accès au clavier).</summary>
+    private void Tile_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (!(e.Key == Key.Apps || (e.Key == Key.F10 && Keyboard.Modifiers == ModifierKeys.Shift) || (e.Key == Key.System && e.SystemKey == Key.F10 && Keyboard.Modifiers == ModifierKeys.Shift))) return;
+        TileMore_Click(sender, e);
+    }
+
+    /// <summary>Bouton « … » visible au survol d'une tuile : ouvre le même menu que le clic droit.</summary>
+    private void TileMore_Click(object sender, RoutedEventArgs e)
+    {
+        e.Handled = true;   // ne lance pas l'application
+        if ((sender as FrameworkElement)?.Tag is not AppItem a) return;
+        if (a.IsSuite) { ShowSuiteMenu((UIElement)sender, a, full: true); return; }
+        var menu = BuildAppMenu(a);
+        menu.PlacementTarget = (UIElement)sender;
+        menu.IsOpen = true;
     }
 
     private void Tile_RightClick(object sender, MouseButtonEventArgs e)
@@ -630,6 +665,16 @@ public partial class MainWindow
     private void ChangeTheme(AppItem a, string category)
     {
         // Suite : le choix s'applique à toutes ses applications
+        // État d'avant, pour « Annuler »
+        var before = (a.IsSuite ? a.Members.Select(m => m.Name) : new[] { a.Name })
+            .ToDictionary(n => n, n => Settings.Current.Overrides.TryGetValue(n, out var o) ? o : null);
+        void Undo()
+        {
+            foreach (var (n, o) in before) { if (o == null) Settings.Current.Overrides.Remove(n); else Settings.Current.Overrides[n] = o; }
+            Settings.Save();
+            ReclassifyAll();
+            RefreshAll();
+        }
         if (a.IsSuite)
         {
             foreach (var m in a.Members) Settings.Current.Overrides.Remove(m.Name);
@@ -637,13 +682,13 @@ public partial class MainWindow
             Settings.Save();
             ReclassifyAll();
             RefreshAll();
-            ShowToast(category == null ? $"{a.Name} : catégorie automatique" : $"{a.Name} → {category}");
+            ShowToast(category == null ? $"{a.Name} : catégorie automatique" : $"{a.Name} → {category}", Undo);
             return;
         }
         Settings.SetOverride(a.Name, category);
         ReclassifyAll();
         RefreshAll();
-        ShowToast(category == null ? $"{a.Name} : catégorie automatique" : $"{a.Name} → {category}");
+        ShowToast(category == null ? $"{a.Name} : catégorie automatique" : $"{a.Name} → {category}", DesktopManager.FoldersMode ? null : Undo);
         // En mode « dossiers », le raccourci rangé suit son nouveau thème
         if (DesktopManager.FoldersMode)
         {

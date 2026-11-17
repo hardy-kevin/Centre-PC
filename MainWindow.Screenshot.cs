@@ -173,7 +173,7 @@ public partial class MainWindow
                     _captureWaiting = false;
                     _captureTimeout?.Stop();
                     ComeBack();
-                    if (_captureWasShown) ShowToast("Capture copiée : collez-la avec Ctrl+V. La notification de Windows permet de l'annoter ou de l'enregistrer.");
+                    if (_captureWasShown) ShowToast("Capture copiée : collez-la avec Ctrl+V.");
                 });
             return IntPtr.Zero;
         });

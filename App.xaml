@@ -37,6 +37,8 @@
 
         <!-- ===================== Texte ===================== -->
         <Style x:Key="PageTitle" TargetType="TextBlock">
+            <!-- Titre de page : niveau 1 (touche H du Narrateur / de NVDA pour passer d'un titre à l'autre) -->
+            <Setter Property="AutomationProperties.HeadingLevel" Value="Level1"/>
             <Setter Property="FontFamily" Value="{StaticResource DisplayFont}"/>
             <Setter Property="FontSize" Value="30"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
@@ -47,6 +49,7 @@
             <Setter Property="FontSize" Value="13"/>
         </Style>
         <Style x:Key="SectionTitle" TargetType="TextBlock">
+            <Setter Property="AutomationProperties.HeadingLevel" Value="Level2"/>
             <Setter Property="FontFamily" Value="{StaticResource DisplayFont}"/>
             <Setter Property="FontSize" Value="17"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
@@ -65,6 +68,22 @@
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="CornerRadius" Value="14"/>
             <Setter Property="Padding" Value="20"/>
+        </Style>
+
+        <!-- ===================== Repère du focus clavier ===================== -->
+        <!-- Remplace le pointillé noir de Windows, invisible sur fond sombre : un contour jaune épais, bordé de noir, autour de l'élément actif -->
+        <Style x:Key="{x:Static SystemParameters.FocusVisualStyleKey}">
+            <Setter Property="Control.Template">
+                <Setter.Value>
+                    <ControlTemplate>
+                        <Grid Margin="-5" SnapsToDevicePixels="True">
+                            <!-- Liseré sombre puis contour jaune épais : visible sur tous les fonds -->
+                            <Rectangle RadiusX="12" RadiusY="12" Stroke="Black" StrokeThickness="5"/>
+                            <Rectangle RadiusX="12" RadiusY="12" Stroke="#FFD60A" StrokeThickness="3" Fill="#18FFD60A"/>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
 
         <!-- ===================== Boutons ===================== -->

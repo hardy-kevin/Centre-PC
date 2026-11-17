@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -49,6 +50,7 @@ public partial class MainWindow
                           ? _plan.Sum(f => f.Items.Count) + _planManual.Count + _docLeftover.Count : DocumentLibrary.Pending().Count);
         DocsBadge.Visibility = n > 0 ? Visibility.Visible : Visibility.Collapsed;
         DocsBadgeText.Text = n.ToString();
+        AutomationProperties.SetName(DocsBadgeText, n == 1 ? "1 document à ranger" : $"{n} documents à ranger");
     }
 
     private static Brush BrushOf(string hex) => (Brush)new BrushConverter().ConvertFromString(hex);
@@ -162,7 +164,7 @@ public partial class MainWindow
         grid.Children.Add(txt);
 
         var hover = new SolidColorBrush(Color.FromArgb(0x14, 0xFF, 0xFF, 0xFF));
-        var tile = new Border
+        var tile = new ClickBorder
         {
             Background = (Brush)FindResource("Surface2"), CornerRadius = new CornerRadius(12), Padding = new Thickness(14, 12, 12, children.Count > 0 ? 6 : 12),
             Width = children.Count > 0 ? 340 : 230, MinHeight = 62, Margin = new Thickness(0, 0, 10, 10), Child = grid, Cursor = Cursors.Hand,
@@ -193,9 +195,13 @@ public partial class MainWindow
     /// Rangés récemment : une rubrique par dossier de destination (les 4 dernières d'abord). Un clic sur la rubrique
     /// l'ouvre et détaille chaque fichier, avec « Ouvrir » et « Afficher l'emplacement ».
     /// </summary>
+    private readonly HashSet<string> _recentSel = new(StringComparer.OrdinalIgnoreCase);
+
     private void BuildRecent(List<string> recent)
     {
         DocRecentPanel.Children.Clear();
+        _recentSel.RemoveWhere(x => !recent.Contains(x, StringComparer.OrdinalIgnoreCase));
+        if (_recentSel.Count > 0) DocRecentPanel.Children.Add(RecentSelectionBar(recent));
         var groups = recent.GroupBy(p => System.IO.Path.GetDirectoryName(p), StringComparer.OrdinalIgnoreCase).ToList();
         foreach (var g in _recentAll ? groups : groups.Take(4))
         {
@@ -227,13 +233,18 @@ public partial class MainWindow
                                    tip: "Ouvrir ce dossier dans l'Explorateur");
             show.VerticalAlignment = VerticalAlignment.Center;
             Grid.SetColumn(show, 3); head.Children.Add(show);
-            head.MouseLeftButtonUp += (_, e) =>
+            // Rubrique activable au clavier (Entrée) comme à la souris ; son état est annoncé
+            var headBox = new ClickBorder { Child = head, Background = Brushes.Transparent, CornerRadius = new CornerRadius(8), Cursor = Cursors.Hand };
+            System.Windows.Automation.AutomationProperties.SetName(headBox,
+                $"{FriendlyFolder(key)}, {Plural(names.Count, "élément", "éléments")}, {(open ? "déplié" : "replié")}"
+                + (open ? "" : ". " + string.Join(", ", names.Take(3)) + (names.Count > 3 ? $" et {names.Count - 3} autre(s)" : "")));
+            headBox.MouseLeftButtonUp += (_, e) =>
             {
                 if (e.Handled) return;
                 if (!_recentOpen.Remove(key)) _recentOpen.Add(key);
                 BuildRecent(recent);
             };
-            DocRecentPanel.Children.Add(head);
+            DocRecentPanel.Children.Add(headBox);
 
             if (open)
             {
@@ -243,19 +254,28 @@ public partial class MainWindow
                 {
                     var row = new Grid { Margin = new Thickness(0, 2, 0, 2) };
                     row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                    row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
                     row.ColumnDefinitions.Add(new ColumnDefinition());
                     row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
                     bool isDir = Directory.Exists(path);
-                    row.Children.Add(new TextBlock { Text = isDir ? "\uE8B7" : "\uE8A5", FontFamily = (FontFamily)FindResource("Icons"), FontSize = 13, Opacity = 0.6,
-                                                     VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) });
+                    // Case de sélection : plusieurs éléments à ouvrir ou à remettre à leur place en une fois
+                    var picked = path;
+                    var pick = new CheckBox { IsChecked = _recentSel.Contains(path), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0),
+                                              ToolTip = "Sélectionner pour traiter plusieurs éléments ensemble" };
+                    System.Windows.Automation.AutomationProperties.SetName(pick, "Sélectionner " + System.IO.Path.GetFileName(path));
+                    pick.Click += (_, _) => { if (pick.IsChecked == true) _recentSel.Add(picked); else _recentSel.Remove(picked); BuildRecent(recent); };
+                    row.Children.Add(pick);
+                    var kind = new TextBlock { Text = isDir ? "\uE8B7" : "\uE8A5", FontFamily = (FontFamily)FindResource("Icons"), FontSize = 13, Opacity = 0.6,
+                                               VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) };
+                    Grid.SetColumn(kind, 1); row.Children.Add(kind);
                     var name = new TextBlock { Text = System.IO.Path.GetFileName(path), VerticalAlignment = VerticalAlignment.Center,
                                                TextTrimming = TextTrimming.CharacterEllipsis, ToolTip = path };
-                    Grid.SetColumn(name, 1); row.Children.Add(name);
+                    Grid.SetColumn(name, 2); row.Children.Add(name);
                     var acts = new StackPanel { Orientation = Orientation.Horizontal };
                     var item = path;
                     acts.Children.Add(SmallButton("\uE8A7", "Ouvrir", (_, _) => Updates.Open(item), tip: isDir ? "Ouvrir le dossier" : "Ouvrir avec l'application habituelle"));
                     acts.Children.Add(SmallButton("\uE838", null, (_, _) => DocumentLibrary.ShowInExplorer(item), tip: "Afficher l'emplacement"));
-                    Grid.SetColumn(acts, 2); row.Children.Add(acts);
+                    Grid.SetColumn(acts, 3); row.Children.Add(acts);
                     list.Children.Add(row);
                 }
                 DocRecentPanel.Children.Add(list);
@@ -268,6 +288,37 @@ public partial class MainWindow
             more.Click += (_, _) => { _recentAll = !_recentAll; BuildRecent(recent); };
             DocRecentPanel.Children.Add(more);
         }
+    }
+
+    /// <summary>Barre d'actions pour les éléments cochés dans « Rangé récemment ».</summary>
+    private FrameworkElement RecentSelectionBar(List<string> recent)
+    {
+        var sel = recent.Where(_recentSel.Contains).ToList();
+        var bar = new WrapPanel { Margin = new Thickness(8, 0, 8, 10) };
+        var label = new TextBlock { Text = sel.Count == 1 ? "1 élément sélectionné" : $"{sel.Count} éléments sélectionnés", FontWeight = FontWeights.SemiBold,
+                                    VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 14, 0) };
+        bar.Children.Add(label);
+        var open = SmallButton("\uE8A7", "Ouvrir", (_, _) => { foreach (var x in sel) Updates.Open(x); }, tip: "Ouvrir chaque élément avec son application habituelle");
+        var back = SmallButton("\uE7A7", "Remettre à leur place", (_, _) => UndoRecent(sel), tip: "Chaque élément retourne là où il était avant le rangement");
+        var clear = SmallButton("\uE8E6", "Désélectionner", (_, _) => { _recentSel.Clear(); BuildRecent(recent); });
+        foreach (var b in new[] { open, back, clear }) { b.Margin = new Thickness(0, 0, 8, 0); bar.Children.Add(b); }
+        return bar;
+    }
+
+    /// <summary>Remet les éléments choisis à l'endroit d'où Centre PC les avait rangés (historique des 30 derniers jours).</summary>
+    private void UndoRecent(List<string> paths)
+    {
+        var history = History.Recent(500);
+        int done = 0, failed = 0;
+        foreach (var path in paths)
+        {
+            var e = history.FirstOrDefault(h => h.Kind == "document" && h.CanUndo && string.Equals(h.To, path, StringComparison.OrdinalIgnoreCase));
+            if (e == null || History.Undo(e) != null) failed++; else done++;
+        }
+        _recentSel.Clear();
+        ShowToast(failed == 0 ? (done == 1 ? "L'élément est revenu à sa place." : $"{done} éléments sont revenus à leur place.")
+                              : $"{done} élément(s) remis à leur place, {failed} impossible(s) : déplacé(s) depuis, ou ouvert(s).");
+        RefreshDocuments();
     }
 
     /// <summary>« C:\Users\…\Documents\Jeux » → « Documents › Jeux ».</summary>
