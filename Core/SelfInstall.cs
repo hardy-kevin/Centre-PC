@@ -98,9 +98,8 @@ public static class SelfInstall
         Settings.Load();
         try
         {
-            // 1) Icônes d'origine et flèches de raccourci
+            // 1) Icônes d'origine
             IconStyler.RevertAsync().Wait();
-            if (IconStyler.ArrowsHidden()) IconStyler.SetArrows(false);
             // 2) Éléments rangés → retour sur le bureau
             var stored = AppScanner.ScanDesktop().Where(i => i.Location == ItemLocation.Stored).ToList();
             DesktopManager.Restore(stored);

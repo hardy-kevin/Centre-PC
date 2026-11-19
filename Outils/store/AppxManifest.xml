@@ -31,7 +31,5 @@
   <Capabilities>
     <!-- Appli de bureau classique (accès au bureau, aux raccourcis, à Windows Update) -->
     <rescap:Capability Name="runFullTrust" />
-    <!-- Actions ponctuelles en administrateur, toujours avec l'accord de l'utilisateur (raccourcis partagés, flèches) -->
-    <rescap:Capability Name="allowElevation" />
   </Capabilities>
 </Package>

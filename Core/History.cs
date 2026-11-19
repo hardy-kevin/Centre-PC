@@ -75,20 +75,16 @@ public static class History
     {
         if (e.Undone) return "Déjà annulé.";
         if (!File.Exists(e.To) && !Directory.Exists(e.To)) return "L'élément n'est plus à l'emplacement où Centre PC l'avait placé.";
-        if (File.Exists(e.From) || Directory.Exists(e.From)) return "Un autre élément porte déjà ce nom à l'emplacement d'origine.";
+        // Venu du bureau Public (versions précédentes) : remis sur le bureau de l'utilisateur, sans droits administrateur
+        var from = DesktopManager.IsPublicDesktop(Path.GetDirectoryName(e.From))
+            ? Path.Combine(AppScanner.UserDesktop, Path.GetFileName(e.From)) : e.From;
+        if (File.Exists(from) || Directory.Exists(from)) return "Un autre élément porte déjà ce nom à l'emplacement d'origine.";
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(e.From));
-            if (e.IsFolder || Directory.Exists(e.To)) Directory.Move(e.To, e.From); else File.Move(e.To, e.From);
+            Directory.CreateDirectory(Path.GetDirectoryName(from));
+            if (e.IsFolder || Directory.Exists(e.To)) Directory.Move(e.To, from); else File.Move(e.To, from);
         }
-        catch (UnauthorizedAccessException)
-        {
-            // Bureau Public : droits administrateur nécessaires
-            if (!Elevated.IsAllowedLocation(e.From) || !Elevated.IsAllowedLocation(e.To)) return "Accès refusé.";
-            var json = Path.Combine(Settings.DataDir, "deplacements.json");
-            File.WriteAllText(json, JsonSerializer.Serialize(new List<MoveOp> { new(e.To, e.From) }));
-            if (!Elevated.Run($"--move \"{json}\"") || !File.Exists(e.From)) return "Autorisation refusée.";
-        }
+        catch (UnauthorizedAccessException) { return "Accès refusé par Windows."; }
         catch (Exception ex) { Log.Error("Annulation " + e.To, ex); return ex.Message; }
 
         // Ce que Centre PC retient des emplacements suit le mouvement
@@ -98,15 +94,15 @@ public static class History
             case "rangement":                           // rangé → de retour sur le bureau
                 cfg.Stored.Remove(e.To);
                 cfg.Stored.Remove(Path.GetFileName(e.To));
-                IconStyler.OnMoved(e.To, e.From);
+                IconStyler.OnMoved(e.To, from);
                 break;
             case "remise":                              // remis sur le bureau → de nouveau rangé
                 cfg.Stored[e.From] = e.To;
                 IconStyler.OnMoved(e.To, e.From);
                 break;
             case "remplacement":
-                if (DocumentLibrary.IsUnder(e.From, Settings.StoreDir))
-                    cfg.Stored[e.From] = Path.Combine(AppScanner.UserDesktop, Path.GetFileName(e.From));
+                if (DocumentLibrary.IsUnder(from, Settings.StoreDir))
+                    cfg.Stored[from] = Path.Combine(AppScanner.UserDesktop, Path.GetFileName(e.From));
                 break;
             case "document":
                 cfg.DocRecent.RemoveAll(p => p.Equals(e.To, StringComparison.OrdinalIgnoreCase));

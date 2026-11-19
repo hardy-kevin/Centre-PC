@@ -38,8 +38,6 @@ public class PreviewItem
     public ImageSource Image { get; set; }
 }
 
-public record IconOp(string Path, string IconLocation);
-
 /// <summary>Génère des icônes « tuile colorée par thème » et les applique aux raccourcis du bureau.</summary>
 public static class IconStyler
 {
@@ -71,7 +69,6 @@ public static class IconStyler
     public static Task<int> ApplyAsync(List<StyleTarget> targets) => Native.RunSta(() =>
     {
         Directory.CreateDirectory(IconsDir);
-        var elevated = new List<IconOp>();
         int n = 0;
         foreach (var t in targets)
         {
@@ -88,7 +85,7 @@ public static class IconStyler
 
                 bool ok = kind switch
                 {
-                    "lnk" => ApplyLnk(t.Path, ico + ",0", backup, isNew, elevated),
+                    "lnk" => ApplyLnk(t.Path, ico + ",0", backup, isNew),
                     "url" => ApplyUrl(t.Path, ico, backup, isNew),
                     _ => ApplyFolder(t.Path, ico, backup, isNew)
                 };
@@ -96,10 +93,11 @@ public static class IconStyler
             }
             catch { }
         }
-        if (elevated.Count > 0 && RunElevatedIconOps(elevated)) n += elevated.Count;
         SaveBackups();
         NotifyShell(targets.Select(t => t.Path));
         CleanIcons();
+        // Dossiers : le bureau affiche sinon l'ancienne miniature (aperçu du contenu) gardée par Windows
+        if (targets.Any(t => t.IsFolder)) ResetIconCache();
         return n;
     });
 
@@ -107,7 +105,6 @@ public static class IconStyler
     public static Task<int> RevertAsync(Func<IconBackup, bool> filter = null) => Native.RunSta(() =>
     {
         int n = 0;
-        var elevated = new List<IconOp>();
         var paths = new List<string>();
         foreach (var b in Backups.Where(b => filter == null || filter(b)).ToList())
         {
@@ -119,7 +116,14 @@ public static class IconStyler
                 {
                     case "lnk":
                         try { Shortcuts.SetIconLocation(path, b.IconLocation ?? ""); }
-                        catch { elevated.Add(new IconOp(path, b.IconLocation ?? "")); }
+                        catch when (DesktopManager.IsPublicDesktop(System.IO.Path.GetDirectoryName(path)))
+                        {
+                            // Raccourci commun à tous les comptes stylisé par une version précédente : le modifier demande
+                            // les droits administrateur, que Centre PC ne demande plus. Sa sauvegarde est abandonnée.
+                            Log.Info("Icône d'origine non rétablie (raccourci commun à tous les comptes) : " + path);
+                            Backups.Remove(b);
+                            continue;
+                        }
                         break;
                     case "url":
                         RevertUrl(path, b);
@@ -132,10 +136,10 @@ public static class IconStyler
             }
             catch { }
         }
-        if (elevated.Count > 0) RunElevatedIconOps(elevated);
         SaveBackups();
         NotifyShell(paths);
         CleanIcons();
+        if (paths.Any(Directory.Exists)) ResetIconCache();   // dossiers : miniatures à refaire (voir ApplyAsync)
         return n;
     });
 
@@ -164,40 +168,11 @@ public static class IconStyler
     }
 
     // ------------------------------------------------------------------ .lnk
-    private static bool ApplyLnk(string path, string location, IconBackup backup, bool isNew, List<IconOp> elevated)
+    private static bool ApplyLnk(string path, string location, IconBackup backup, bool isNew)
     {
         if (isNew) backup.IconLocation = Shortcuts.GetIconLocation(path);
         try { Shortcuts.SetIconLocation(path, location); return true; }
-        catch
-        {
-            // Raccourci « pour tous les utilisateurs » : nécessite les droits admin
-            elevated.Add(new IconOp(path, location));
-            if (isNew) Backups.Add(backup);
-            return false;
-        }
-    }
-
-    private static bool RunElevatedIconOps(List<IconOp> ops)
-    {
-        var json = System.IO.Path.Combine(Settings.DataDir, "icones-admin.json");
-        File.WriteAllText(json, JsonSerializer.Serialize(ops));
-        return Elevated.Run($"--icons \"{json}\"");
-    }
-
-    /// <summary>Appelé par l'instance élevée (« CentrePC.exe --icons fichier.json »).</summary>
-    public static void RunElevatedIconOps(string jsonPath)
-    {
-        var ops = JsonSerializer.Deserialize<List<IconOp>>(File.ReadAllText(jsonPath));
-        foreach (var op in ops)
-        {
-            // Le fichier d'instructions est modifiable sans droits : seuls les raccourcis des bureaux sont acceptés
-            if (!Elevated.IsAllowedLocation(op.Path) || !op.Path.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase))
-            {
-                Log.Info($"Action administrateur refusée (icône) : {op.Path}");
-                continue;
-            }
-            try { Shortcuts.SetIconLocation(op.Path, op.IconLocation); } catch (Exception ex) { Log.Error("Icône " + op.Path, ex); }
-        }
+        catch { return false; }   // raccourci que Windows refuse de modifier (commun à tous les comptes…) : laissé tel quel
     }
 
     // ------------------------------------------------------------------ .url
@@ -267,110 +242,6 @@ public static class IconStyler
         if ((attr & FileAttributes.ReadOnly) != 0) File.SetAttributes(path, attr & ~FileAttributes.ReadOnly);
         File.WriteAllLines(path, lines);
         File.SetAttributes(path, attr);
-    }
-
-    // ------------------------------------------------------------------ Flèches de raccourci
-    private const string ShellIconsKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Shell Icons";
-
-    public static bool ArrowsHidden()
-    {
-        try
-        {
-            using var k = Registry.LocalMachine.OpenSubKey(ShellIconsKey);
-            return k?.GetValue("29") is string v && v.Contains("CentrePC", StringComparison.OrdinalIgnoreCase);
-        }
-        catch { return false; }
-    }
-
-    /// <summary>Masque ou rétablit les flèches (droits admin requis), puis redémarre l'Explorateur.</summary>
-    public static bool SetArrows(bool hide)
-    {
-        string arg;
-        if (hide)
-        {
-            // Sauvegarde de la valeur d'origine (souvent absente)
-            try
-            {
-                using var k = Registry.LocalMachine.OpenSubKey(ShellIconsKey);
-                var prev = k?.GetValue("29") as string;
-                if (prev == null || !prev.Contains("CentrePC", StringComparison.OrdinalIgnoreCase))
-                    Settings.Current.ArrowPreviousValue = prev ?? "";
-            }
-            catch { }
-            Settings.Save();
-            var blank = BlankIcon;
-            Native.RunSta(() => { WriteIco(blank, new[] { 48, 32, 16 }.Select(Transparent).ToList()); return 0; }).Wait();
-            arg = $"--arrows hide \"{blank}\"";
-        }
-        else arg = $"--arrows restore \"{Settings.Current.ArrowPreviousValue ?? ""}\"";
-
-        if (!Elevated.Run(arg)) return false;
-        RestartExplorer();
-        return true;
-    }
-
-    /// <summary>
-    /// Icône vide qui remplace la flèche. Windows garde en cache l'image d'une icône d'après son chemin :
-    /// changer de nom de fichier est le seul moyen sûr de lui faire relire une icône corrigée.
-    /// </summary>
-    private static string BlankIcon => System.IO.Path.Combine(Settings.DataDir, "fleche-vide-2.ico");
-
-    private static string ArrowValue()
-    {
-        try { using var k = Registry.LocalMachine.OpenSubKey(ShellIconsKey); return k?.GetValue("29") as string; }
-        catch { return null; }
-    }
-
-    /// <summary>Les flèches sont masquées par Centre PC avec l'ancienne icône (carrés noirs) ?</summary>
-    public static bool NeedsArrowRepair()
-    {
-        var v = ArrowValue();
-        if (v == null || !v.Contains("CentrePC", StringComparison.OrdinalIgnoreCase)) return false;
-        var file = v.Split(',')[0].Trim().Trim('"');
-        if (file.Equals(BlankIcon, StringComparison.OrdinalIgnoreCase) && File.Exists(file) && !HasSmallPng(file)) return false;
-        var last = Settings.Current.ArrowRepairAsked;
-        return last == null || DateTime.Now - last > TimeSpan.FromDays(1);   // refusé : redemandé au plus une fois par jour
-    }
-
-    /// <summary>
-    /// Répare les carrés noirs (versions ≤ 1.2.1) : nouvelle icône vide au bon format, sous un nouveau nom,
-    /// enregistrée en administrateur (une demande d'autorisation), puis cache d'icônes vidé.
-    /// </summary>
-    public static bool RepairArrowOverlay()
-    {
-        if (!NeedsArrowRepair()) return false;
-        var old = (ArrowValue() ?? "").Split(',')[0].Trim().Trim('"');
-        Settings.Current.ArrowRepairAsked = DateTime.Now;
-        Settings.Save();
-        var blank = BlankIcon;
-        Native.RunSta(() => { WriteIco(blank, new[] { 48, 32, 16 }.Select(Transparent).ToList()); return 0; }).Wait();
-        if (!Elevated.Run($"--arrows hide \"{blank}\"")) return false;   // autorisation refusée
-        try { if (!old.Equals(blank, StringComparison.OrdinalIgnoreCase) && File.Exists(old)) File.Delete(old); } catch { }
-        ResetIconCache();
-        return true;
-    }
-
-    /// <summary>Appelé par l'instance élevée.</summary>
-    public static void RunElevatedArrows(string mode, string value)
-    {
-        // Seule une icône .ico peut remplacer la flèche (la restauration reprend la valeur d'origine sauvegardée)
-        if (mode == "hide" && (!value.EndsWith(".ico", StringComparison.OrdinalIgnoreCase) || !File.Exists(value))) return;
-        using var k = Registry.LocalMachine.CreateSubKey(ShellIconsKey);
-        if (mode == "hide") k.SetValue("29", value + ",0", RegistryValueKind.String);
-        else if (string.IsNullOrEmpty(value)) k.DeleteValue("29", false);
-        else k.SetValue("29", value, RegistryValueKind.String);
-    }
-
-    public static void RestartExplorer()
-    {
-        try
-        {
-            foreach (var p in Process.GetProcessesByName("explorer")) { try { p.Kill(); } catch { } }
-            Thread.Sleep(1500);
-            if (Process.GetProcessesByName("explorer").Length == 0)
-                Process.Start(new ProcessStartInfo("explorer.exe") { UseShellExecute = true });
-        }
-        catch { }
     }
 
     // ------------------------------------------------------------------ Rendu des tuiles
@@ -504,14 +375,6 @@ public static class IconStyler
         rtb.Render(dv);
         rtb.Freeze();
         return rtb;
-    }
-
-    private static BitmapSource Transparent(int size)
-    {
-        var px = new byte[size * size * 4];
-        var b = BitmapSource.Create(size, size, 96, 96, PixelFormats.Bgra32, null, px, size * 4);
-        b.Freeze();
-        return b;
     }
 
     /// <summary>Icône d'origine (jamais l'icône déjà stylisée), pour ne pas empiler les tuiles.</summary>
@@ -660,7 +523,11 @@ public static class IconStyler
         return repaired;
     }
 
-    /// <summary>Vide le cache d'icônes de l'Explorateur (sinon les anciennes images restent affichées).</summary>
+    /// <summary>
+    /// Vide les caches d'icônes et de miniatures de l'Explorateur (sinon les anciennes images restent affichées :
+    /// un dossier du bureau garde par exemple l'aperçu de son contenu au lieu de son icône colorée).
+    /// L'Explorateur est fermé puis relancé : le bureau et la barre des tâches disparaissent un instant.
+    /// </summary>
     public static void ResetIconCache()
     {
         try
@@ -674,7 +541,7 @@ public static class IconStyler
             for (int i = 0; i < 8; i++)
             {
                 Thread.Sleep(400);
-                var files = (Directory.Exists(dir) ? Directory.GetFiles(dir, "iconcache_*.db") : Array.Empty<string>())
+                var files = (Directory.Exists(dir) ? Directory.GetFiles(dir, "iconcache_*.db").Concat(Directory.GetFiles(dir, "thumbcache_*.db")).ToArray() : Array.Empty<string>())
                     .Append(System.IO.Path.Combine(local, "IconCache.db")).Where(File.Exists).ToList();
                 foreach (var f in files) { try { File.Delete(f); } catch { } }
                 if (!files.Any(File.Exists)) break;
@@ -769,51 +636,5 @@ public static class Ini
             }
         }
         if (value != null) lines.Insert(secStart + 1, $"{key}={value}");
-    }
-}
-
-/// <summary>Relance Centre PC en administrateur pour une action précise.</summary>
-public static class Elevated
-{
-    /// <summary>
-    /// Emplacements où une instance administrateur a le droit de déplacer ou modifier des fichiers :
-    /// bureaux (de tout compte, et bureau Public) et dossiers de Centre PC. Tout le reste est refusé,
-    /// pour qu'un fichier d'instructions modifié par un autre programme ne puisse pas toucher au système.
-    /// </summary>
-    public static bool IsAllowedLocation(string path)
-    {
-        try
-        {
-            if (string.IsNullOrWhiteSpace(path) || path.Contains("..")) return false;
-            var full = Path.GetFullPath(path);
-            // Lien symbolique ou jonction sur le chemin (fichier ou dossier parent) : refusé, il ferait agir l'instance administrateur ailleurs.
-            // (Les dossiers OneDrive « à la demande » ne sont pas des liens : LinkTarget y est nul.)
-            for (FileSystemInfo node = File.Exists(full) ? new FileInfo(full) : new DirectoryInfo(full); node != null;
-                 node = node is FileInfo f ? f.Directory : ((DirectoryInfo)node).Parent)
-                if (node.Exists && node.LinkTarget != null) return false;
-            var pub = Environment.GetFolderPath(Environment.SpecialFolder.CommonDesktopDirectory);
-            if (!string.IsNullOrEmpty(pub) && full.StartsWith(pub.TrimEnd('\\') + "\\", StringComparison.OrdinalIgnoreCase)) return true;
-            var users = Path.GetDirectoryName(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
-            if (string.IsNullOrEmpty(users) || !full.StartsWith(users.TrimEnd('\\') + "\\", StringComparison.OrdinalIgnoreCase)) return false;
-            // C:\Users\<compte>\… : bureau (OneDrive compris) ou dossiers de Centre PC
-            return full.Contains("\\Desktop\\", StringComparison.OrdinalIgnoreCase)
-                || full.Contains("\\Bureau\\", StringComparison.OrdinalIgnoreCase)
-                || full.Contains("\\AppData\\Local\\CentrePC\\", StringComparison.OrdinalIgnoreCase)
-                || full.Contains("\\Documents\\Centre PC\\", StringComparison.OrdinalIgnoreCase);
-        }
-        catch { return false; }
-    }
-
-    public static bool Run(string args)
-    {
-        Settings.Flush();   // l'instance administrateur relit la configuration sur le disque
-        try
-        {
-            var p = Process.Start(new ProcessStartInfo(Environment.ProcessPath, args) { UseShellExecute = true, Verb = "runas" });
-            if (p == null) return true;
-            p.WaitForExit();
-            try { return p.ExitCode == 0; } catch { return true; }
-        }
-        catch { return false; }   // autorisation refusée
     }
 }

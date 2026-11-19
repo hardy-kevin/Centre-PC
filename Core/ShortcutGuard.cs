@@ -89,12 +89,14 @@ public static class ShortcutGuard
     /// <summary>
     /// Doublons déjà présents (icônes remises sur le bureau par d'anciennes mises à jour alors qu'elles étaient rangées) :
     /// retirés du bureau, ou remplacent la version rangée si elle est plus ancienne. Bureau de l'utilisateur seulement
-    /// par défaut (aucune demande d'autorisation).
+    /// par défaut : le bureau Public demande les droits administrateur, que Centre PC ne demande plus.
     /// </summary>
     public static ReconcileResult CleanDuplicates(bool includePublic = false) =>
         Reconcile(new ShortcutSnapshot { DesktopFiles = DesktopShortcuts().ToList(), StoredCount = 0 }, includePublic, keepSnapshot: true);
 
-    public static ReconcileResult Reconcile(ShortcutSnapshot snap) => Reconcile(snap, includePublic: true, keepSnapshot: false);
+    // Bureau Public exclu : les nouvelles icônes qui y sont posées pendant une mise à jour sont déjà ramenées
+    // sur le bureau de l'utilisateur par le script de mise à jour (Scripts\maj.ps1), lancé en administrateur
+    public static ReconcileResult Reconcile(ShortcutSnapshot snap) => Reconcile(snap, includePublic: false, keepSnapshot: false);
 
     private static ReconcileResult Reconcile(ShortcutSnapshot snap, bool includePublic, bool keepSnapshot)
     {
@@ -173,7 +175,7 @@ public static class ShortcutGuard
             }
         }
 
-        // Exécution : une seule demande administrateur au plus (raccourcis du bureau Public)
+        // Exécution (bureau de l'utilisateur et rangement : aucun droit administrateur nécessaire)
         if (moves.Count > 0)
         {
             foreach (var m in moves) m.Prepare?.Invoke();

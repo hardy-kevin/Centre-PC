@@ -407,7 +407,8 @@
                                         </WrapPanel>
                                         <CheckBox x:Name="TidyFilesCheck" Content="Proposer de ranger les fichiers du bureau dans Documents, Images…" Margin="0,12,0,0"
                                                   Checked="TidyFiles_Changed" Unchecked="TidyFiles_Changed"/>
-                                        <CheckBox x:Name="ArrowsCheck" Content="Masquer les flèches de raccourci" Margin="0,8,0,0" Click="Arrows_Click"/>
+                                        <CheckBox x:Name="TidyPublicCheck" Content="Proposer de ranger aussi les raccourcis communs à tous les comptes du PC (autorisation de Windows)" Margin="0,8,0,0"
+                                                  Checked="TidyPublic_Changed" Unchecked="TidyPublic_Changed"/>
 
                                         <!-- Apparence : utile surtout avec les dossiers de catégorie sur le bureau -->
                                         <StackPanel x:Name="StyleSection" Margin="0,22,0,0">

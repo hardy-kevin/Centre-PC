@@ -52,10 +52,14 @@ public partial class MainWindow
     private async void Tidy_Click(object sender, RoutedEventArgs e)
     {
         // Icônes déjà rangées remises sur le bureau par un installateur : pas de second exemplaire « (2) »
-        var dup = await Task.Run(() => ShortcutGuard.CleanDuplicates(includePublic: true));
+        // Raccourcis communs à tous les comptes (bureau Public) : ramenés sur le bureau de l'utilisateur si celui-ci accepte
+        await OfferPublicTidyAsync();
+        var dup = await Task.Run(() => ShortcutGuard.CleanDuplicates());
         if (dup.Total > 0) { await ReloadAsync(); }
         // Raccourcis → rangement de Centre PC. Fichiers et dossiers → Documents, Images… (assistant ci-dessous)
-        var items = _desk.Where(d => d.OnDesktop && !d.Keep && d.IsShortcut).ToList();
+        // Raccourcis communs à tous les comptes (bureau Public) : réservés aux administrateurs, ils restent sur le bureau
+        var items = _desk.Where(d => d.Location == ItemLocation.Desktop && !d.Keep && d.IsShortcut).ToList();
+        int shared = _desk.Count(d => d.Location == ItemLocation.PublicDesktop && !d.Keep && d.IsShortcut);   // restés après la proposition
         var stored = _desk.Where(d => d.Location == ItemLocation.Stored).ToList();
         int n = dup.Total + await Task.Run(() => DesktopManager.Store(items) + DesktopManager.Refile(stored));
         await AfterTidyAsync();
@@ -65,7 +69,47 @@ public partial class MainWindow
             ShowToast((n > 0 ? $"{n} icône(s) rangée(s). " : "") + $"Rangez à présent vos {files.Count} fichier(s) dans vos dossiers.");
             OpenDocSorter(files);
         }
-        else ShowToast(n == 0 ? "Le bureau est déjà rangé." : $"{n} élément(s) rangé(s)");
+        else ShowToast((n == 0 ? "Le bureau est déjà rangé." : $"{n} élément(s) rangé(s).") + SharedNote(shared));
+    }
+
+    /// <summary>Raccourcis communs à tous les comptes du PC laissés sur le bureau (proposition refusée ou désactivée).</summary>
+    private static string SharedNote(int shared) => shared == 0 ? ""
+        : (shared == 1 ? " 1 raccourci commun à tous les comptes du PC reste sur le bureau."
+                       : $" {shared} raccourcis communs à tous les comptes du PC restent sur le bureau.")
+          + " Pour les ranger aussi : Bureau, Personnaliser.";
+
+    /// <summary>
+    /// Propose de ramener les raccourcis du bureau Public sur le bureau de l'utilisateur (une autorisation de Windows),
+    /// pour qu'ils soient rangés et colorés comme les autres. « Non » : la question n'est plus posée (réglable dans les options).
+    /// </summary>
+    private async Task OfferPublicTidyAsync()
+    {
+        if (!Settings.Current.TidyPublicAsk) return;
+        var shared = _desk.Where(d => d.Location == ItemLocation.PublicDesktop && !d.Keep && d.IsShortcut).ToList();
+        if (shared.Count == 0) return;
+        var names = string.Join("\n", shared.Take(6).Select(d => "• " + d.Name)) + (shared.Count > 6 ? $"\n• et {shared.Count - 6} autre(s)" : "");
+        var answer = MessageBox.Show(
+            (shared.Count == 1 ? "Ce raccourci est commun à tous les comptes du PC :" : $"Ces {shared.Count} raccourcis sont communs à tous les comptes du PC :") +
+            $"\n{names}\n\nLes placer sur votre bureau pour les ranger avec les autres ?\n\n" +
+            "Windows va demander une autorisation. Ils n'apparaîtront plus sur le bureau des autres comptes du PC.\n\n" +
+            "Non : ils restent où ils sont, et la question ne sera plus posée (modifiable dans Bureau, Personnaliser).",
+            "Centre PC", MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (answer != MessageBoxResult.Yes)
+        {
+            Settings.Current.TidyPublicAsk = false;
+            Settings.Save();
+            TidyPublicCheck.IsChecked = false;
+            return;
+        }
+        int moved = await Task.Run(() => DesktopManager.MovePublicShortcutsToUser());
+        if (moved < 0) { ShowToast("Autorisation refusée : les raccourcis communs restent sur le bureau."); return; }
+        if (moved > 0) await ReloadAsync();
+    }
+
+    private void TidyPublic_Changed(object sender, RoutedEventArgs e)
+    {
+        Settings.Current.TidyPublicAsk = TidyPublicCheck.IsChecked == true;
+        Settings.Save();
     }
 
     /// <summary>Après un rangement : supprime les dossiers de catégorie vides, stylise les nouveaux, recharge.</summary>
@@ -115,9 +159,10 @@ public partial class MainWindow
             .ToList();
         if (files.Count > 0) { OpenDocSorter(files); if (files.Count == all.Count) return; }
         var list = all.Where(i => i.IsShortcut).ToList();
+        int shared = list.Count(i => i.Location == ItemLocation.PublicDesktop);
         int n = await Task.Run(() => DesktopManager.Store(list));
         await AfterTidyAsync();
-        ShowToast(n == 0 ? "Aucun élément n'a pu être rangé." : $"{n} élément(s) rangé(s) dans Centre PC");
+        ShowToast((n == 0 ? "Aucun élément n'a pu être rangé." : $"{n} élément(s) rangé(s) dans Centre PC.") + SharedNote(shared));
     }
 
     private async void RestoreAll_Click(object sender, RoutedEventArgs e)
@@ -153,7 +198,8 @@ public partial class MainWindow
     // ---------- Apparence des icônes ----------
     private List<StyleTarget> StyleTargets()
     {
-        var list = _desk.Where(d => d.OnDesktop && d.IsShortcut && d.FilePath != null &&
+        // Raccourcis communs à tous les comptes (bureau Public) exclus : les modifier demande les droits administrateur
+        var list = _desk.Where(d => d.Location == ItemLocation.Desktop && d.IsShortcut && d.FilePath != null &&
                                     (d.FilePath.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase) || d.FilePath.EndsWith(".url", StringComparison.OrdinalIgnoreCase)))
             .Where(d => !IconStyler.IsOwnShortcut(d.FilePath))
             .Select(d => new StyleTarget { Path = d.FilePath, Name = d.Name, Theme = d.Theme })
@@ -199,7 +245,6 @@ public partial class MainWindow
         if (DeskOptionsSummary == null) return;
         bool folders = DesktopManager.FoldersMode, styled = IconStyler.IsStyled;
         var parts = new List<string> { folders ? "Rangement dans des dossiers de catégorie" : "Rangement dans Centre PC" };
-        if (IconStyler.ArrowsHidden()) parts.Add("flèches masquées");
         if (styled) parts.Add("icônes stylisées");
         DeskOptionsSummary.Text = string.Join(" · ", parts);
 
@@ -262,23 +307,5 @@ public partial class MainWindow
     {
         Settings.Current.StyleFolders = StyleFoldersCheck.IsChecked == true;
         Settings.Save();
-    }
-
-    private async void Arrows_Click(object sender, RoutedEventArgs e)
-    {
-        bool hide = ArrowsCheck.IsChecked == true;
-        var msg = (hide ? "Masquer les flèches de raccourci ?" : "Rétablir les flèches de raccourci ?") +
-                  "\n\nWindows demandera une autorisation, puis l'Explorateur redémarrera (la barre des tâches disparaît quelques secondes).";
-        if (MessageBox.Show(msg, "Centre PC", MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK)
-        {
-            ArrowsCheck.IsChecked = !hide;
-            return;
-        }
-        ArrowsCheck.IsEnabled = false;
-        bool ok = await Task.Run(() => IconStyler.SetArrows(hide));
-        ArrowsCheck.IsEnabled = true;
-        ArrowsCheck.IsChecked = IconStyler.ArrowsHidden();
-        UpdateDeskOptions();
-        ShowToast(ok ? (hide ? "Flèches masquées" : "Flèches rétablies") : "Modification annulée");
     }
 }

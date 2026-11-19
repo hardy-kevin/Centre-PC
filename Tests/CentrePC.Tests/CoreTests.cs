@@ -111,33 +111,6 @@ public class DocumentLibraryTests
     }
 }
 
-/// <summary>Sécurité : emplacements acceptés par les actions lancées en administrateur.</summary>
-public class ElevatedTests
-{
-    [Fact]
-    public void Refuse_le_systeme()
-    {
-        Assert.False(Elevated.IsAllowedLocation(@"C:\Windows\System32\drivers\etc\hosts"));
-        Assert.False(Elevated.IsAllowedLocation(@"C:\Program Files\App\app.exe"));
-        Assert.False(Elevated.IsAllowedLocation(""));
-    }
-
-    [Fact]
-    public void Refuse_les_detours_par_dossier_parent()
-    {
-        var desk = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
-        Assert.False(Elevated.IsAllowedLocation(Path.Combine(desk, @"..\..\..\Windows\win.ini")));
-    }
-
-    [Fact]
-    public void Accepte_le_bureau_public()
-    {
-        var pub = Environment.GetFolderPath(Environment.SpecialFolder.CommonDesktopDirectory);
-        if (string.IsNullOrEmpty(pub)) return;
-        Assert.True(Elevated.IsAllowedLocation(Path.Combine(pub, "Jeu.lnk")));
-    }
-}
-
 /// <summary>Fichiers .ico : petites tailles en BMP (sinon carrés noirs sur le bureau).</summary>
 public class IconFormatTests
 {

@@ -1,3 +1,3 @@
-## Centre PC 1.2.6
+## Centre PC 1.2.7
 
-- Correction de la désinstallation
+- Mise en conformité avec les réglementations Microsoft Store

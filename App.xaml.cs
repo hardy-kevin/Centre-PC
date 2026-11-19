@@ -34,26 +34,6 @@ public partial class App : Application
         }
         OpenUpdatesPage = e.Args.Any(a => a.StartsWith(BackgroundCheck.Protocol + ":", StringComparison.OrdinalIgnoreCase));
 
-        // Instance élevée chargée seulement de déplacer des fichiers du bureau Public
-        // Instances élevées (administrateur) lancées pour une action précise
-        if (e.Args.Length >= 2 && e.Args[0].StartsWith("--"))
-        {
-            int code = 0;
-            try
-            {
-                Settings.Load();
-                Settings.ReadOnly = true;   // l'instance principale reste seule à écrire la configuration
-                switch (e.Args[0])
-                {
-                    case "--move": DesktopManager.RunElevatedMoves(e.Args[1]); break;
-                    case "--icons": IconStyler.RunElevatedIconOps(e.Args[1]); break;
-                    case "--arrows": IconStyler.RunElevatedArrows(e.Args[1], e.Args.Length > 2 ? e.Args[2] : ""); break;
-                }
-            }
-            catch (Exception ex) { code = 1; Log.Error("Action administrateur " + e.Args[0], ex); }
-            Shutdown(code);
-            return;
-        }
         // Désinstallation (lancée depuis « Applications installées »)
         if (e.Args.Contains("--uninstall"))
         {

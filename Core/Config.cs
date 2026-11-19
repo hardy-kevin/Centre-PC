@@ -26,6 +26,8 @@ public class Config
     /// <summary>Fichier rangé (nom dans le dossier de rangement) → chemin d'origine.</summary>
     public Dictionary<string, string> Stored { get; set; } = new();
     public bool TidyFiles { get; set; } = true;
+    /// <summary>Proposer de ramener sur le bureau de l'utilisateur les raccourcis communs à tous les comptes (autorisation de Windows).</summary>
+    public bool TidyPublicAsk { get; set; } = true;
     /// <summary>Vérifier les mises à jour chaque jour, même quand Centre PC est fermé (notification Windows).</summary>
     public bool DailyCheck { get; set; } = true;
     /// <summary>Arborescence de rangement des documents (chemins de dossiers dans Documents, Images, Musique, Vidéos).</summary>
@@ -116,9 +118,6 @@ public class Config
     public DateTime? LastUpdateCheck { get; set; }
     /// <summary>État d'origine des icônes personnalisées (pour revenir en arrière).</summary>
     public List<IconBackup> IconBackups { get; set; } = new();
-    public string ArrowPreviousValue { get; set; }
-    /// <summary>Dernière tentative de réparation de l'icône qui masque les flèches (carrés noirs).</summary>
-    public DateTime? ArrowRepairAsked { get; set; }
     public bool StyleFolders { get; set; } = true;
     /// <summary>Version des mots-clés par défaut fusionnés dans cette configuration.</summary>
     public int DefaultsVersion { get; set; }

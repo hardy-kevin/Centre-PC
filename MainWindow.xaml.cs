@@ -54,11 +54,11 @@ public partial class MainWindow : Window
         AppsProgressList.ItemsSource = _appSteps;
         ReportActionsList.ItemsSource = _report;
         TidyFilesCheck.IsChecked = Settings.Current.TidyFiles;
+        TidyPublicCheck.IsChecked = Settings.Current.TidyPublicAsk;
         _modeInit = true;
         (DesktopManager.FoldersMode ? ModeFoldersRadio : ModeAppRadio).IsChecked = true;
         _modeInit = false;
         StyleFoldersCheck.IsChecked = Settings.Current.StyleFolders;
-        ArrowsCheck.IsChecked = IconStyler.ArrowsHidden();
         UpdateStyleStatus();
         UpdateLastCheck();
         // Fermeture de session : on quitte vraiment (pas de retour dans la zone de notification)
@@ -120,12 +120,6 @@ public partial class MainWindow : Window
         }
         catch (Exception ex) { Log.Error("Entretien du bureau au démarrage", ex); }
         if (changed) await ReloadAsync();
-        // Carrés noirs sur les icônes du bureau (icône vide des flèches enregistrée au mauvais format avant la 1.2.2)
-        if (IconStyler.NeedsArrowRepair())
-        {
-            ShowToast("Réparation des icônes du bureau : veuillez accepter la demande d'autorisation de Windows.");
-            if (await Task.Run(() => IconStyler.RepairArrowOverlay())) ShowToast("Icônes du bureau réparées.");
-        }
         if (await Task.Run(() => IconStyler.RepairIconFormats())) ShowToast("Affichage des icônes du bureau réparé.");
         RefreshSettingsPage();
         try { _hw = await Updates.ScanHardwareAsync(); ShowHardware(); } catch { }
@@ -268,10 +262,14 @@ public partial class MainWindow : Window
     // ---------- Présentation
     private void Welcome_Click(object sender, RoutedEventArgs e)
     {
+        bool firstRun = !Settings.Current.OnboardingDone;
         WelcomeOverlay.Visibility = Visibility.Collapsed;
         Settings.Current.OnboardingDone = true;
         Settings.Save();
         FocusStart();
+        // Premier lancement : l'accès rapide (fenêtre fermée, démarrage avec Windows, raccourci) est proposé
+        // juste après l'accueil, sans attendre le lancement suivant
+        if (firstRun) _launchScreen = false;
         MaybeOfferQuickAccess();
     }
 

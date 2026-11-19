@@ -48,8 +48,9 @@ public static class DesktopManager
     public static int Store(IEnumerable<AppItem> items)
     {
         var ops = new List<MoveOp>();
-        // Raccourcis seulement : les documents se rangent dans Documents, Images… (DocumentLibrary), jamais dans un dossier caché
-        foreach (var it in items.Where(i => i.OnDesktop && i.FilePath != null && i.IsShortcut))
+        // Raccourcis seulement : les documents se rangent dans Documents, Images… (DocumentLibrary), jamais dans un dossier caché.
+        // Bureau de l'utilisateur seulement : ceux du bureau Public (communs à tous les comptes) demandent les droits administrateur.
+        foreach (var it in items.Where(i => i.Location == ItemLocation.Desktop && i.FilePath != null && i.IsShortcut))
             ops.Add(new MoveOp(it.FilePath, UniquePath(DestinationDir(it), Path.GetFileName(it.FilePath))));
         var done = Execute(ops);
         foreach (var op in done)
@@ -93,7 +94,10 @@ public static class DesktopManager
         {
             var original = OriginalOf(it.FilePath);
             var dir = Path.GetDirectoryName(original);
-            if (!Directory.Exists(dir) || IsThemeFolder(dir)) { dir = AppScanner.UserDesktop; original = Path.Combine(dir, Path.GetFileName(it.FilePath)); }
+            // Rangé depuis le bureau Public par une version précédente : remis sur le bureau de l'utilisateur
+            // (même affichage, et aucun droit administrateur nécessaire)
+            if (!Directory.Exists(dir) || IsThemeFolder(dir) || IsPublicDesktop(dir))
+            { dir = AppScanner.UserDesktop; original = Path.Combine(dir, Path.GetFileName(it.FilePath)); }
             var dest = File.Exists(original) ? UniquePath(dir, Path.GetFileName(original)) : original;
             ops.Add(new MoveOp(it.FilePath, dest));
         }
@@ -108,6 +112,63 @@ public static class DesktopManager
         Settings.Save();
         return done.Count;
     }
+
+    // ------------------------------------------------------------------ bureau Public (communs à tous les comptes)
+    /// <summary>
+    /// Ramène les raccourcis du bureau Public sur le bureau de l'utilisateur, où Centre PC peut ensuite les ranger sans droits.
+    /// Le déplacement est fait par un script PowerShell lancé en administrateur (fenêtre d'autorisation de Windows) :
+    /// Centre PC ne se relance jamais lui-même en administrateur. Le script est vérifié par empreinte, ne déplace que des
+    /// raccourcis (.lnk, .url) posés directement sur le bureau Public, et seulement vers un dossier du profil d'un utilisateur.
+    /// Renvoie le nombre de raccourcis déplacés, ou -1 si l'autorisation a été refusée.
+    /// </summary>
+    public static int MovePublicShortcutsToUser()
+    {
+        var pub = AppScanner.PublicDesktop;
+        if (string.IsNullOrEmpty(pub) || !Directory.Exists(pub) || !IsPublicDesktop(pub)) return 0;
+        int Count() { try { return Directory.EnumerateFiles(pub).Count(f => f.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".url", StringComparison.OrdinalIgnoreCase)); } catch { return 0; } }
+        int before = Count();
+        if (before == 0) return 0;
+        try
+        {
+            var script = Path.Combine(Settings.DataDir, "bureau-public.ps1");
+            using var p = Updates.StartVerifiedElevated(script, PublicMoveScript, ("Source", pub), ("Dest", AppScanner.UserDesktop));
+            if (p == null) return -1;
+            if (!p.WaitForExit(60_000)) return 0;
+            try { if (p.ExitCode != 0) Log.Info($"Bureau Public : le script s'est arrêté (code {p.ExitCode})"); } catch { }
+        }
+        catch (System.ComponentModel.Win32Exception) { return -1; }   // autorisation refusée
+        catch (Exception ex) { Log.Error("Bureau Public", ex); return 0; }
+        return Math.Max(0, before - Count());
+    }
+
+    private const string PublicMoveScript = @"
+param([string]$Source, [string]$Dest)
+$ErrorActionPreference = 'Stop'
+# Départ : le bureau Public, et lui seul
+$pub = [Environment]::GetFolderPath('CommonDesktopDirectory')
+if (-not $pub -or $Source.TrimEnd('\') -ne $pub.TrimEnd('\')) { exit 2 }
+# Arrivée : un dossier existant (pas un lien) dans le profil d'un utilisateur, hors bureau Public
+$users = Split-Path $env:PUBLIC -Parent
+$full = [IO.Path]::GetFullPath($Dest)
+if (-not $full.StartsWith($users.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase) -or
+    $full.StartsWith($env:PUBLIC.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) { exit 3 }
+$d = Get-Item -LiteralPath $full -Force
+if (-not $d.PSIsContainer -or ($d.Attributes -band [IO.FileAttributes]::ReparsePoint)) { exit 3 }
+foreach ($f in @(Get-ChildItem -LiteralPath $pub -File -Force | Where-Object {
+        $_.Extension -in '.lnk', '.url' -and -not ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) })) {
+    $to = Join-Path $full $f.Name
+    $i = 2
+    while (Test-Path -LiteralPath $to) { $to = Join-Path $full (""{0} ({1}){2}"" -f $f.BaseName, $i, $f.Extension); $i++ }
+    try { Move-Item -LiteralPath $f.FullName -Destination $to } catch { }
+}
+exit 0
+";
+
+    /// <summary>Le dossier est-il le bureau Public (raccourcis communs à tous les comptes du PC) ?</summary>
+    public static bool IsPublicDesktop(string dir) =>
+        !string.IsNullOrEmpty(dir) && !string.IsNullOrEmpty(AppScanner.PublicDesktop)
+        && !string.Equals(AppScanner.PublicDesktop.TrimEnd('\\'), AppScanner.UserDesktop.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase)
+        && string.Equals(dir.TrimEnd('\\'), AppScanner.PublicDesktop.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase);
 
     internal static string OriginalOf(string storedPath)
     {
@@ -150,45 +211,19 @@ public static class DesktopManager
     }
 
     // ------------------------------------------------------------------ déplacements
+    /// <summary>
+    /// Déplace les fichiers, sans jamais demander les droits administrateur : un déplacement refusé par Windows
+    /// (raccourci commun à tous les comptes, fichier ouvert…) est simplement laissé en place.
+    /// </summary>
     internal static List<MoveOp> Execute(List<MoveOp> ops)
     {
         var done = new List<MoveOp>();
-        var needAdmin = new List<MoveOp>();
         foreach (var op in ops)
         {
             try { File.Move(op.From, op.To); done.Add(op); }
-            catch (UnauthorizedAccessException) { needAdmin.Add(op); }
-            catch (IOException) { needAdmin.Add(op); }
-        }
-        // Les raccourcis « pour tous les utilisateurs » (bureau Public) demandent les droits admin
-        if (needAdmin.Count > 0)
-        {
-            var json = Path.Combine(Settings.DataDir, "deplacements.json");
-            File.WriteAllText(json, JsonSerializer.Serialize(needAdmin));
-            Elevated.Run($"--move \"{json}\"");
-            done.AddRange(needAdmin.Where(op => !File.Exists(op.From) && File.Exists(op.To)));
+            catch (Exception ex) when (ex is UnauthorizedAccessException or IOException) { Log.Info($"Déplacement impossible : {op.From} ({ex.Message})"); }
         }
         return done;
-    }
-
-    /// <summary>Appelé par l'instance élevée (« CentrePC.exe --move fichier.json »).</summary>
-    public static void RunElevatedMoves(string jsonPath)
-    {
-        try
-        {
-            var ops = JsonSerializer.Deserialize<List<MoveOp>>(File.ReadAllText(jsonPath));
-            foreach (var op in ops)
-            {
-                // Fichier d'instructions modifiable sans droits : départ et arrivée doivent être des emplacements autorisés
-                if (!Elevated.IsAllowedLocation(op.From) || !Elevated.IsAllowedLocation(op.To) || File.Exists(op.To))
-                {
-                    Log.Info($"Déplacement administrateur refusé : {op.From} → {op.To}");
-                    continue;
-                }
-                try { File.Move(op.From, op.To); } catch (Exception ex) { Log.Error("Déplacement " + op.From, ex); }
-            }
-        }
-        catch (Exception ex) { Log.Error("Déplacements administrateur", ex); }
     }
 
     public static string UniquePath(string dir, string fileName)
