@@ -119,6 +119,9 @@ public partial class MainWindow : Window
                                              : $"{orphans.Count} applications désinstallées retirées de Centre PC.");
         }
         catch (Exception ex) { Log.Error("Entretien du bureau au démarrage", ex); }
+        // Installation précédente reprise au démarrage (ou autre version encore installée) : l'utilisateur sait où sont ses icônes
+        var previous = PreviousInstall.ImportedNotice() ?? PreviousInstall.TakeBlockedNotice();
+        if (previous != null) ShowToast(previous);
         if (changed) await ReloadAsync();
         if (await Task.Run(() => IconStyler.RepairIconFormats())) ShowToast("Affichage des icônes du bureau réparé.");
         RefreshSettingsPage();

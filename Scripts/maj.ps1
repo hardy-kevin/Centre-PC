@@ -149,7 +149,9 @@ if ($opt.Apps) {
     }
     if (-not $winget) { Etape 'apps' 'ERREUR' 'winget introuvable (installez « Programme d''installation d''application » depuis le Microsoft Store)' }
     else {
-        $cache = Join-Path $opt.DataDir 'Installateurs'
+        # Installateurs : dans le cache (hors du dossier de données, qui peut être synchronisé par OneDrive)
+        $cacheRacine = if ($opt.CacheDir) { $opt.CacheDir } else { $opt.DataDir }
+        $cache = Join-Path $cacheRacine 'Installateurs'
         New-Item -ItemType Directory -Path $cache -Force | Out-Null
         Get-ChildItem -LiteralPath $cache -Directory -ErrorAction SilentlyContinue |
             Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-14) } | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue

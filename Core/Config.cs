@@ -32,6 +32,13 @@ public class Config
     public bool DailyCheck { get; set; } = true;
     /// <summary>Arborescence de rangement des documents (chemins de dossiers dans Documents, Images, Musique, Vidéos).</summary>
     public List<string> DocFolders { get; set; } = new();
+    /// <summary>
+    /// Dossiers que l'utilisateur a retirés de l'arborescence : Centre PC ne les y remet plus de lui-même
+    /// (même s'ils portent le nom d'un dossier du plan de rangement).
+    /// </summary>
+    public List<string> DocFoldersRemoved { get; set; } = new();
+    /// <summary>Autres installations encore présentes dont l'utilisateur a déjà été prévenu (message montré une fois).</summary>
+    public List<string> OtherInstallNoticed { get; set; } = new();
     /// <summary>Derniers documents rangés (accès rapide).</summary>
     public List<string> DocRecent { get; set; } = new();
     /// <summary>L'utilisateur a refusé l'arborescence de départ proposée.</summary>
@@ -127,17 +134,19 @@ public class Config
 public static class Settings
 {
     /// <summary>
-    /// Dossier de Centre PC. Version Store : Windows isole AppData pour les applications du Store (invisible pour l'Explorateur
-    /// et supprimé à la désinstallation) ; on utilise donc Documents\Centre PC pour que les raccourcis rangés et les icônes
-    /// restent visibles par Windows et ne soient jamais perdus.
+    /// Dossier des données de Centre PC pour ce PC : Documents\Centre PC\&lt;nom du PC&gt;, pour la version GitHub comme pour la
+    /// version Store (voir <see cref="DataLocation"/> : pourquoi Documents, pourquoi un dossier par PC). Les données des
+    /// versions précédentes (%LOCALAPPDATA%\CentrePC, Documents\Centre PC) y sont déplacées par <see cref="PreviousInstall"/>.
     /// </summary>
-    public static readonly string DataDir = Native.IsPackaged
-        ? Path.Combine(Paths.Get(Environment.SpecialFolder.MyDocuments), "Centre PC")
-        : Path.Combine(Paths.Get(Environment.SpecialFolder.LocalApplicationData), "CentrePC");
+    public static readonly string DataDir = DataLocation.Resolve();
+    /// <summary>Cache jetable (icônes affichées, installateurs) : %LOCALAPPDATA%\CentrePC\Cache, jamais synchronisé.</summary>
+    public static readonly string CacheDir = DataLocation.CacheDir;
     public static readonly string StoreDir = Path.Combine(DataDir, "Bureau rangé");
     private static readonly string ConfigPath = Path.Combine(DataDir, "config.json");
 
     public static Config Current { get; private set; }
+    /// <summary>Aucune configuration n'existait au dernier chargement (premier lancement de cette installation).</summary>
+    public static bool FirstRun { get; private set; }
     public const string FilesCategory = "Fichiers";
     public const string FavoritesCategory = "Favoris";
 
@@ -175,13 +184,8 @@ public static class Settings
             catch (Exception ex) { Log.Error("Lecture de config.bak", ex); }
         }
         cfg ??= new Config();
-        if (cfg.Categories == null || cfg.Categories.Count == 0) { cfg.Categories = DefaultCategories(); cfg.DefaultsVersion = DefaultsVersion; }
-        if (cfg.DefaultsVersion < DefaultsVersion) MergeDefaults(cfg);
-        cfg.Overrides = new Dictionary<string, string>(cfg.Overrides ?? new(), StringComparer.OrdinalIgnoreCase);
-        cfg.Stored = new Dictionary<string, string>(cfg.Stored ?? new(), StringComparer.OrdinalIgnoreCase);
-        cfg.Favorites ??= new(); cfg.KeepOnDesktop ??= new(); cfg.WingetExclusions ??= new(); cfg.PhantomUpdates ??= new(); cfg.DriverExclusions ??= new(); cfg.DocFolders ??= new(); cfg.DocRecent ??= new(); cfg.DriverExclusionNames ??= new(); cfg.IconBackups ??= new(); cfg.HiddenApps ??= new(); cfg.SortSkipped ??= new(); cfg.ObsoleteKept ??= new(); cfg.DeclinedThemes ??= new(); cfg.SuiteExcluded ??= new(); cfg.DocRejected ??= new(); cfg.DocReview ??= new(); cfg.RecentApps ??= new(); cfg.HotkeyBackups ??= new(); cfg.HotkeyIdentified ??= new(); cfg.DeviceFixBackups ??= new(); cfg.BenchHistory ??= new();
-        cfg.AppFolders = new Dictionary<string, List<string>>(cfg.AppFolders ?? new(), StringComparer.CurrentCultureIgnoreCase);
-        if (!cfg.KeepOnDesktop.Contains("Centre PC", StringComparer.OrdinalIgnoreCase)) cfg.KeepOnDesktop.Add("Centre PC");
+        Normalize(cfg);
+        FirstRun = firstRun;
         Current = cfg;
         BuildRules();
         // Déploiement : une configuration « CentrePC.config.json » posée à côté de l'exe est importée au premier lancement
@@ -194,6 +198,32 @@ public static class Settings
             }
             catch { }
         }
+        Save();
+    }
+
+    /// <summary>Complète une configuration lue sur le disque (listes manquantes, comparaisons sans casse, nouveaux mots-clés).</summary>
+    private static void Normalize(Config cfg)
+    {
+        if (cfg.Categories == null || cfg.Categories.Count == 0) { cfg.Categories = DefaultCategories(); cfg.DefaultsVersion = DefaultsVersion; }
+        if (cfg.DefaultsVersion < DefaultsVersion) MergeDefaults(cfg);
+        cfg.Overrides = new Dictionary<string, string>(cfg.Overrides ?? new(), StringComparer.OrdinalIgnoreCase);
+        cfg.Stored = new Dictionary<string, string>(cfg.Stored ?? new(), StringComparer.OrdinalIgnoreCase);
+        cfg.Favorites ??= new(); cfg.KeepOnDesktop ??= new(); cfg.WingetExclusions ??= new(); cfg.PhantomUpdates ??= new(); cfg.DriverExclusions ??= new(); cfg.DocFolders ??= new(); cfg.DocRecent ??= new(); cfg.DriverExclusionNames ??= new(); cfg.IconBackups ??= new(); cfg.HiddenApps ??= new(); cfg.SortSkipped ??= new(); cfg.ObsoleteKept ??= new(); cfg.DeclinedThemes ??= new(); cfg.SuiteExcluded ??= new(); cfg.DocRejected ??= new(); cfg.DocReview ??= new(); cfg.RecentApps ??= new(); cfg.HotkeyBackups ??= new(); cfg.HotkeyIdentified ??= new(); cfg.DeviceFixBackups ??= new(); cfg.BenchHistory ??= new();
+        cfg.AppFolders = new Dictionary<string, List<string>>(cfg.AppFolders ?? new(), StringComparer.CurrentCultureIgnoreCase);
+        cfg.DocFoldersRemoved ??= new(); cfg.OtherInstallNoticed ??= new();
+        if (!cfg.KeepOnDesktop.Contains("Centre PC", StringComparer.OrdinalIgnoreCase)) cfg.KeepOnDesktop.Add("Centre PC");
+    }
+
+    /// <summary>
+    /// Reprend telle quelle la configuration d'une version précédente sur ce même PC (premier lancement, voir
+    /// <see cref="PreviousInstall"/>) : elle remplace la configuration vide de départ.
+    /// </summary>
+    public static void Adopt(Config cfg)
+    {
+        if (ReadOnly || cfg == null) return;
+        Normalize(cfg);
+        Current = cfg;
+        BuildRules();
         Save();
     }
 

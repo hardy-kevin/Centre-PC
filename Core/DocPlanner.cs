@@ -191,6 +191,12 @@ public static class DocPlanner
     {
         var name = Path.GetFileName(dir.TrimEnd('\\'));
         if (WindowsContentFolders.IsMatch(name)) return false;
+        // Dossier de données de Centre PC lui-même (version Store : Documents\Centre PC) : raccourcis rangés, icônes, bilans
+        if (IsCentrePcDataDir(dir)) return true;
+        // Dossier du plan de rangement de Centre PC (créé par cette installation ou une précédente) : c'est une catégorie de
+        // l'utilisateur, même si son nom ressemble à une appli (« Photos » / appli Photos, « Enregistrements de jeu » / thème Jeux)
+        // ou s'il contient des fichiers techniques (« Programmation »). Seul un dépôt de code y reste intouchable.
+        if (IsOwnFolder(dir)) return HasProjectMarker(dir);
         if (AppFolderNames.IsMatch(name)) return true;
         var n = Simple(name);
         if (n.Length >= 3 && installedNames != null && installedNames.Any(a => { var s = Simple(a); return s.Length >= 3 && (s == n || s.StartsWith(n) || n.StartsWith(s)); }))
@@ -200,7 +206,7 @@ public static class DocPlanner
         if (theme is "Jeux" or "Lanceurs de jeux" or Settings.GameToolsCategory) return true;
         try
         {
-            if (ProjectMarkers.Any(m => File.Exists(Path.Combine(dir, m)) || Directory.Exists(Path.Combine(dir, m)))) return true;
+            if (HasProjectMarker(dir)) return true;
             int seen = 0, technical = 0;
             foreach (var f in Directory.EnumerateFiles(dir, "*", new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true, MaxRecursionDepth = 2 }))
             {
@@ -212,6 +218,99 @@ public static class DocPlanner
             return technical > 0 && technical * 4 >= seen;
         }
         catch { return true; }
+    }
+
+    /// <summary>Dossier de données de cette installation de Centre PC ou d'une autre (version .exe ou Store).</summary>
+    internal static bool IsCentrePcDataDir(string dir)
+    {
+        var d = dir.TrimEnd('\\');
+        return new[] { Settings.DataDir, PreviousInstall.ExeDataDir, PreviousInstall.StoreDataDir }
+            .Any(p => p.TrimEnd('\\').Equals(d, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool HasProjectMarker(string dir)
+    {
+        try { return ProjectMarkers.Any(m => File.Exists(Path.Combine(dir, m)) || Directory.Exists(Path.Combine(dir, m))); }
+        catch { return true; }
+    }
+
+    // ------------------------------------------------------------------ dossiers de Centre PC
+    /// <summary>
+    /// Emplacements des dossiers que Centre PC crée lui-même : ceux du plan de rangement (« Documents\Administratif\Factures »,
+    /// « Images\Créations IA », « Téléchargements\Programmes d'installation »…) et ceux de l'arborescence de départ.
+    /// </summary>
+    public static List<string> OwnFolderPaths()
+    {
+        var res = new List<string>();
+        var roots = DocumentLibrary.Roots;
+        void Add(string rootKey, string rel)
+        {
+            var root = roots.FirstOrDefault(r => r.Key == rootKey)?.Path;
+            if (string.IsNullOrEmpty(root) || string.IsNullOrEmpty(rel)) return;
+            var p = Path.Combine(root, rel);
+            if (!res.Contains(p, StringComparer.OrdinalIgnoreCase)) res.Add(p);
+        }
+        foreach (var r in Rules) Add(r.RootKey, r.Path);
+        foreach (var (rootKey, rel) in DocumentLibrary.Starter) Add(rootKey, rel);
+        return res;
+    }
+
+    /// <summary>
+    /// Dossier de Centre PC : dans l'arborescence de Centre PC, à l'emplacement d'un dossier du plan de rangement,
+    /// ou portant une icône posée par Centre PC (desktop.ini qui pointe vers le dossier d'icônes d'une installation,
+    /// actuelle ou passée).
+    /// </summary>
+    public static bool IsOwnFolder(string dir)
+    {
+        if (string.IsNullOrEmpty(dir)) return false;
+        var d = dir.TrimEnd('\\');
+        if (Settings.Current.DocFolders.Any(p => p.TrimEnd('\\').Equals(d, StringComparison.OrdinalIgnoreCase))) return true;
+        if (OwnFolderPaths().Any(p => p.Equals(d, StringComparison.OrdinalIgnoreCase))) return true;
+        return HasCentrePcIcon(d);
+    }
+
+    /// <summary>Icône de dossier posée par Centre PC (dossier d'icônes d'une version actuelle ou passée : AppData\Local\CentrePC\Icones, Documents\Centre PC\Icones, Documents\Centre PC\&lt;PC&gt;\Icones).</summary>
+    internal static bool HasCentrePcIcon(string dir)
+    {
+        try
+        {
+            var ini = Path.Combine(dir, "desktop.ini");
+            if (!File.Exists(ini)) return false;
+            var icon = Ini.Get(File.ReadAllLines(ini).ToList(), ".ShellClassInfo", "IconResource") ?? "";
+            return Regex.IsMatch(icon, @"\\Centre ?PC\\(?:[^\\]+\\)?Icones\\", RegexOptions.IgnoreCase);   // …\CentrePC\Icones, …\Centre PC\<PC>\Icones
+        }
+        catch { return false; }
+    }
+
+    /// <summary>
+    /// Remet dans l'arborescence de Centre PC les dossiers qu'il avait créés, y compris lors d'une installation précédente
+    /// (désinstallation, passage de la version .exe à la version Microsoft Store) : dossiers du plan de rangement présents
+    /// sur le disque et dossiers portant une icône de Centre PC, avec leurs sous-dossiers du plan. Un dossier que
+    /// l'utilisateur a retiré de l'arborescence n'y revient jamais. Rien n'est créé ni déplacé. Renvoie les dossiers ajoutés.
+    /// </summary>
+    public static List<string> AdoptOwnFolders()
+    {
+        var cfg = Settings.Current;
+        var added = new List<string>();
+        var candidates = OwnFolderPaths().Where(Directory.Exists).ToList();
+        // Icône de Centre PC : premier et deuxième niveau de chaque grand dossier (dossiers renommés, créés à la main…)
+        foreach (var r in DocumentLibrary.Roots.Where(r => !string.IsNullOrEmpty(r.Path) && Directory.Exists(r.Path)))
+            foreach (var d in SafeDirs(r.Path))
+            {
+                if (HasCentrePcIcon(d)) candidates.Add(d);
+                foreach (var sub in SafeDirs(d).Take(50)) if (HasCentrePcIcon(sub)) candidates.Add(sub);
+            }
+        foreach (var p in candidates.Select(c => c.TrimEnd('\\')).Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            if (cfg.DocFolders.Any(f => f.TrimEnd('\\').Equals(p, StringComparison.OrdinalIgnoreCase))) continue;
+            // Retiré par l'utilisateur (lui ou un dossier parent) : choix respecté
+            if (cfg.DocFoldersRemoved.Any(r => r.TrimEnd('\\').Equals(p, StringComparison.OrdinalIgnoreCase) || DocumentLibrary.IsUnder(p, r))) continue;
+            if (HasProjectMarker(p) || IsSkippable(p)) continue;
+            DocumentLibrary.AddFolder(p);
+            added.Add(p);
+        }
+        if (added.Count > 0) Log.Info($"Dossiers de Centre PC retrouvés : {string.Join(", ", added.Select(FriendlyDir))}");
+        return added;
     }
 
     // ------------------------------------------------------------------ inventaire

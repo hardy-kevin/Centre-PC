@@ -151,6 +151,8 @@ public static class DocumentLibrary
         var list = Settings.Current.DocFolders;
         var root = Roots.FirstOrDefault(r => IsUnder(path, r.Path));
         var p = path.TrimEnd('\\');
+        // Remis dans l'arborescence par l'utilisateur : Centre PC peut de nouveau le reconnaître de lui-même
+        Settings.Current.DocFoldersRemoved.RemoveAll(r => r.TrimEnd('\\').Equals(p, StringComparison.OrdinalIgnoreCase));
         while (p != null && (root == null || IsUnder(p, root.Path)))
         {
             if (!list.Contains(p, StringComparer.OrdinalIgnoreCase)) list.Add(p);
@@ -191,6 +193,9 @@ public static class DocumentLibrary
     public static bool RemoveFolder(string path)
     {
         Settings.Current.DocFolders.RemoveAll(p => p.Equals(path, StringComparison.OrdinalIgnoreCase) || IsUnder(p, path));
+        // Choix de l'utilisateur : le dossier n'est plus jamais remis dans l'arborescence automatiquement
+        if (!Settings.Current.DocFoldersRemoved.Contains(path.TrimEnd('\\'), StringComparer.OrdinalIgnoreCase))
+            Settings.Current.DocFoldersRemoved.Add(path.TrimEnd('\\'));
         Settings.Save();
         try
         {

@@ -96,6 +96,9 @@ public static class SelfInstall
                 "Centre PC", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
 
         Settings.Load();
+        // Données d'une version précédente pas encore déplacées (Centre PC pas rouvert depuis la mise à jour) : reprises
+        // d'abord, pour que leurs icônes rangées reviennent elles aussi sur le bureau
+        try { PreviousInstall.Run(); } catch { }
         try
         {
             // 1) Icônes d'origine
@@ -134,6 +137,8 @@ public static class SelfInstall
 
         // 4) Suppression des fichiers une fois l'application fermée
         var cmd = $"/c timeout /t 3 /nobreak >nul & rmdir /s /q \"{InstallDir}\"";
+        // Cache jetable (icônes affichées, installateurs) : toujours retiré ; son dossier parent seulement s'il est vide
+        cmd += $" & rmdir /s /q \"{Settings.CacheDir}\" & rmdir \"{Path.GetDirectoryName(Settings.CacheDir)}\"";
         if (!keepData) cmd += $" & rmdir /s /q \"{Settings.DataDir}\"";
         Process.Start(new ProcessStartInfo("cmd.exe", cmd) { CreateNoWindow = true, UseShellExecute = false, WindowStyle = ProcessWindowStyle.Hidden });
     }

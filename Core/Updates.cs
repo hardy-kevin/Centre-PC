@@ -550,6 +550,8 @@ public static class Updates
         public string Log { get; set; }
         /// <summary>Dossier de Centre PC (installateurs prêts, mémoire des mises à jour qui désinstallent d'abord).</summary>
         public string DataDir { get; set; }
+        /// <summary>Cache jetable (installateurs téléchargés) : hors du dossier de données, qui peut être synchronisé par OneDrive.</summary>
+        public string CacheDir { get; set; }
         /// <summary>
         /// Bureau rangé : les icônes que les installateurs ajoutent sur le bureau Public (admin requis) sont ramenées
         /// sur le bureau de l'utilisateur, où Centre PC peut ensuite les ranger sans redemander l'autorisation.
@@ -613,6 +615,7 @@ public static class Updates
             try { old.Delete(); } catch { }
         opt.Log = Path.Combine(logDir, $"MAJ_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.log");
         opt.DataDir = dir;
+        opt.CacheDir = Settings.CacheDir;
         opt.UserDesktop = AppScanner.UserDesktop;
         opt.ReplacedDir = ShortcutGuard.ReplacedDir;
         opt.StoreDir = Settings.StoreDir;

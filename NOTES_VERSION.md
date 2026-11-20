@@ -1,3 +1,3 @@
-## Centre PC 1.2.7
+## Centre PC 1.2.8
 
-- Mise en conformité avec les réglementations Microsoft Store
+- Compatibilité entre la version GitHub et Microsoft Store

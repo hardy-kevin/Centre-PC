@@ -34,7 +34,7 @@ public static class IconLoader
     // ------------------------------------------------------------------ cache sur le disque
     // Les icônes calculées sont gardées en PNG : au lancement suivant elles s'affichent sans relire les programmes.
     // La clé tient compte de la date du raccourci : une icône changée (style, nouvelle version) est recalculée.
-    private static readonly string DiskDir = Path.Combine(Settings.DataDir, "Cache", "Icones");
+    private static readonly string DiskDir = Path.Combine(Settings.CacheDir, "Icones");   // cache jetable, hors du dossier synchronisé
     private static bool _purged;
 
     private static string DiskKey(AppItem it)

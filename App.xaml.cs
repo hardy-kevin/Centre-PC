@@ -24,8 +24,10 @@ public partial class App : Application
             // Centre PC déjà ouvert : sa pastille suffit, pas de notification en double
             if (!Mutex.TryOpenExisting(@"Local\CentrePC_Instance", out var running))
             {
-                Settings.Load();
+                // Lecture seule avant le chargement : rien n'est écrit (un premier lancement reste un premier lancement,
+                // et les données d'une version précédente sont déplacées à la prochaine ouverture de Centre PC)
                 Settings.ReadOnly = true;
+                Settings.Load();
                 Task.Run(() => BackgroundCheck.RunAsync()).GetAwaiter().GetResult();
             }
             else running.Dispose();
@@ -87,6 +89,8 @@ public partial class App : Application
         base.OnStartup(e);
         Accessibility.Install();   // noms lisibles par les lecteurs d'écran, pour toute l'application
         Settings.Load();
+        // Installation précédente (autre version, réinstallation) : raccourcis rangés, dossiers et choix repris
+        PreviousInstall.RunAtStartup();
         RemoteCatalog.LoadCached();   // copie locale du catalogue signé, revérifiée à chaque lancement
         var main = new MainWindow();
         // Ouverture de session : Centre PC démarre discrètement, seulement l'icône près de l'horloge

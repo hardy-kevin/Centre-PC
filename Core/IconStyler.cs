@@ -149,6 +149,61 @@ public static class IconStyler
         foreach (var b in Backups.Where(b => b.Path.Equals(from, StringComparison.OrdinalIgnoreCase))) b.Path = to;
     }
 
+    /// <summary>
+    /// Les icônes de Centre PC ont changé de dossier (données d'une version précédente reprises, voir PreviousInstall) :
+    /// les raccourcis et dossiers stylisés pointent vers le nouveau dossier. Renvoie le nombre d'éléments corrigés.
+    /// </summary>
+    public static int RetargetIcons(string oldIconsDir)
+    {
+        if (string.IsNullOrEmpty(oldIconsDir)) return 0;
+        var prefix = oldIconsDir.TrimEnd('\\') + "\\";
+        string Fix(string loc) => loc != null && loc.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+            ? System.IO.Path.Combine(IconsDir, loc.Substring(prefix.Length)) : null;
+        int n = 0;
+        foreach (var b in Backups)
+        {
+            try
+            {
+                var p = Locate(b);
+                if (p == null) continue;
+                if (Directory.Exists(p))
+                {
+                    var ini = System.IO.Path.Combine(p, "desktop.ini");
+                    if (!File.Exists(ini)) continue;
+                    var lines = File.ReadAllLines(ini).ToList();
+                    var res = Ini.Get(lines, ".ShellClassInfo", "IconResource");
+                    var to = Fix(res);
+                    if (to == null) continue;
+                    Ini.Set(lines, ".ShellClassInfo", "IconResource", to);
+                    var attr = File.GetAttributes(ini);
+                    File.SetAttributes(ini, FileAttributes.Normal);
+                    File.WriteAllLines(ini, lines, System.Text.Encoding.Unicode);
+                    File.SetAttributes(ini, attr);
+                    n++;
+                }
+                else if (p.EndsWith(".url", StringComparison.OrdinalIgnoreCase))
+                {
+                    var lines = File.ReadAllLines(p).ToList();
+                    var to = Fix(Ini.Get(lines, "InternetShortcut", "IconFile"));
+                    if (to == null) continue;
+                    Ini.Set(lines, "InternetShortcut", "IconFile", to);
+                    WriteKeepingAttributes(p, lines);
+                    n++;
+                }
+                else if (p.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase))
+                {
+                    var to = Fix(Shortcuts.GetIconLocation(p));
+                    if (to == null) continue;
+                    Shortcuts.SetIconLocation(p, to);
+                    n++;
+                }
+            }
+            catch (Exception ex) { Log.Error("Icône déplacée " + b.Path, ex); }
+        }
+        if (n > 0) NotifyShell(Backups.Select(b => b.Path).ToList());
+        return n;
+    }
+
     public static void SaveBackups()
     {
         Settings.Save();

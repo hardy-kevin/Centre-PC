@@ -65,6 +65,35 @@ public static class History
         }
     }
 
+    /// <summary>
+    /// Reprend l'historique d'une installation précédente (voir <see cref="PreviousInstall"/>), pour que ses déplacements
+    /// restent annulables. <paramref name="moved"/> : ancien emplacement → nouvel emplacement des éléments repris.
+    /// </summary>
+    public static int Import(string historyFile, IReadOnlyDictionary<string, string> moved)
+    {
+        if (Settings.ReadOnly || !File.Exists(historyFile)) return 0;
+        List<HistoryEntry> old;
+        try { old = JsonSerializer.Deserialize<List<HistoryEntry>>(File.ReadAllText(historyFile)); }
+        catch (Exception ex) { Log.Error("Lecture de l'historique précédent", ex); return 0; }
+        if (old == null) return 0;
+        int n = 0;
+        lock (Gate)
+        {
+            foreach (var e in old.Where(e => e != null && e.Date >= DateTime.Now.AddDays(-30)))
+            {
+                if (Items.Any(x => x.Id == e.Id)) continue;
+                if (e.To != null && moved.TryGetValue(e.To, out var to)) e.To = to;
+                if (e.From != null && moved.TryGetValue(e.From, out var from)) e.From = from;
+                Items.Add(e);
+                n++;
+            }
+            if (n == 0) return 0;
+            _items = Items.OrderByDescending(e => e.Date).Take(500).ToList();
+            Save();
+        }
+        return n;
+    }
+
     public static List<HistoryEntry> Recent(int max = 40)
     {
         lock (Gate) return Items.Where(e => e.Date >= DateTime.Now.AddDays(-30)).Take(max).ToList();
