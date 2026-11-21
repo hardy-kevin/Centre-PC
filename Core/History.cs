@@ -7,7 +7,7 @@ public class HistoryEntry
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public DateTime Date { get; set; } = DateTime.Now;
-    /// <summary>rangement, remise, document, remplacement</summary>
+    /// <summary>rangement, remise, document, remplacement, renommage</summary>
     public string Kind { get; set; }
     public string From { get; set; }
     public string To { get; set; }
@@ -21,6 +21,7 @@ public class HistoryEntry
         "remise" => "Remis sur le bureau",
         "document" => "Rangé dans " + Path.GetFileName(Path.GetDirectoryName(To) ?? ""),
         "remplacement" => "Mis de côté (remplacé ou en double)",
+        "renommage" => "Renommé en « " + Path.GetFileName(To ?? "") + " »",
         _ => Kind
     };
     public string When => Date.Date == DateTime.Today ? $"aujourd'hui à {Date:HH:mm}"

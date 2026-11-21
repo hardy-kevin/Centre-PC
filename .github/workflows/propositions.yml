@@ -1,0 +1,66 @@
+# Chaque semaine, lit les retours d'expérience agrégés (au moins 3 installations) et propose des ajouts au catalogue.
+# Rien n'est signé : relisez la demande de fusion, fusionnez, puis sur votre PC :  .\Catalogue\signer.ps1
+# Le dépôt est public : seuls les noms de logiciels, catégories et mots-clés partent, jamais les erreurs ni les dossiers.
+#
+# Secrets à créer une fois (Settings > Secrets and variables > Actions) :
+#   CLOUDFLARE_API_TOKEN   jeton Cloudflare avec le droit « D1 : lecture »
+#   CLOUDFLARE_ACCOUNT_ID  identifiant du compte Cloudflare
+name: Propositions de classement
+
+on:
+  schedule:
+    - cron: '41 5 * * 1'      # chaque lundi, 5 h 41 (UTC)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  propositions:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Lire les vues de la base
+        shell: pwsh
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if (-not $env:CLOUDFLARE_API_TOKEN) { Write-Host 'Secrets Cloudflare absents : rien à faire.'; exit 0 }
+          New-Item -ItemType Directory retours -Force | Out-Null
+          $vues = @{ 'classements.json' = 'classements_proposes'; 'motscles.json' = 'mots_cles_proposes'; 'nonreconnues.json' = 'non_reconnues' }
+          Push-Location Serveur
+          foreach ($f in $vues.Keys) {
+            npx --yes wrangler d1 execute centre-pc-retours --remote --json --command "SELECT * FROM $($vues[$f])" | Out-File "..\retours\$f" -Encoding utf8
+            if ($LASTEXITCODE -ne 0) { throw "Lecture de $($vues[$f]) impossible." }
+          }
+          Pop-Location
+
+      - name: Préparer les propositions
+        shell: pwsh
+        run: if (Test-Path retours) { .\Outils\propositions.ps1 -Dossier retours }
+
+      - name: Ouvrir une demande de fusion
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if (-not (Test-Path Catalogue/propositions.md)) { exit 0 }
+          git add Catalogue/catalogue.json Catalogue/propositions.md
+          git diff --cached --quiet
+          if ($LASTEXITCODE -eq 0) { Write-Host 'Rien de nouveau.'; exit 0 }
+          $branche = 'propositions-catalogue'
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git switch -c $branche
+          git commit -m "Catalogue : propositions du $(Get-Date -Format 'dd/MM/yyyy')"
+          git push --force origin $branche
+          $ouverte = gh pr list --head $branche --state open --json number --jq 'length'
+          if ($ouverte -ne '0') { Write-Host 'Demande de fusion déjà ouverte : mise à jour.'; exit 0 }
+          gh pr create --base $env:GITHUB_REF_NAME --head $branche --title 'Catalogue : propositions des retours' --body-file Catalogue/propositions.md

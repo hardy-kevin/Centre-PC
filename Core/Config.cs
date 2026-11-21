@@ -90,6 +90,8 @@ public class Config
     /// <summary>Catalogue distant signé (classement corrigé sans nouvelle version) : réglage, dernière vérification, dernière version acceptée.</summary>
     public bool RemoteCatalog { get; set; } = true;
     public DateTime? CatalogChecked { get; set; }
+    /// <summary>Dernière recherche d'une nouvelle liste de prénoms et noms (une fois par mois au plus).</summary>
+    public DateTime? NamesChecked { get; set; }
     public int CatalogVersion { get; set; }
     /// <summary>Retours d'expérience anonymes : null = jamais demandé, false = refusé, true = accepté.</summary>
     public bool? FeedbackConsent { get; set; }
@@ -423,7 +425,8 @@ public static class Settings
             foreach (var k in c.Keywords.Where(k => k != null && k.Length > 1 && k[0] == '='))
                 exact.TryAdd(Normalize(k.Substring(1)), c.Name);
             // Les mots-clés les plus longs d'abord : « Dolby Access » passe avant « Access »
-            var words = c.Keywords.Where(k => !string.IsNullOrWhiteSpace(k) && k[0] != '=').Select(Normalize)
+            // Mots-clés du catalogue signé ajoutés à ceux de la catégorie (sans être enregistrés dans les réglages)
+            var words = c.Keywords.Concat(RemoteCatalog.ExtraKeywords(c.Name)).Where(k => !string.IsNullOrWhiteSpace(k) && k[0] != '=').Select(Normalize)
                 .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             var strong = Pattern(words.Where(k => !DefaultThemes.WeakKeywords.Contains(k)));
             if (strong != null) rules.Add((c, strong));
@@ -698,7 +701,6 @@ public static class Settings
         if (category == null) Current.Overrides.Remove(name);
         else Current.Overrides[name] = category;
         Save();
-        Feedback.RecordClassification(name, category);
     }
 
     public static bool IsHidden(string name) => Current.HiddenApps.Contains(name, StringComparer.OrdinalIgnoreCase);

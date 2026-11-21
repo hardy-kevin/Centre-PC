@@ -29,7 +29,7 @@ public sealed class FeedbackEvent
 /// </list>
 /// Envoi groupé une fois par jour au plus vers <see cref="Endpoint"/> ; en cas d'échec, la file reste sur le PC pour la fois suivante.
 /// </summary>
-public static class Feedback
+public static partial class Feedback
 {
     /// <summary>Point d'entrée HTTPS (Cloudflare Workers, code dans Serveur/). Vide : aucun envoi.</summary>
     public static string Endpoint { get; internal set; } = "https://centre-pc-retours.centre-pc.workers.dev/v1/retours";
@@ -73,8 +73,12 @@ public static class Feedback
             if (Regex.IsMatch(rest, @"(?i)^(Windows|Program Files|Program Files \(x86\)|ProgramData)(\\|$)")) return path;
             return path[..3] + "…";
         });
+        // Nom de fichier cité sans son chemin (« 'Facture EDF.pdf' ») : retiré aussi
+        t = Regex.Replace(t, @"[""'«“‘]\s*[^""'«»“”‘’\r\n\\/]{1,200}\.[A-Za-z0-9]{1,6}\s*[""'»”’]", "%FICHIER%");
         if (!string.IsNullOrEmpty(user) && user.Length >= 3) t = Regex.Replace(t, @"(?<![\p{L}\p{N}])" + Regex.Escape(user) + @"(?![\p{L}\p{N}])", "%UTILISATEUR%", RegexOptions.IgnoreCase);
         if (!string.IsNullOrEmpty(machine) && machine.Length >= 3) t = Regex.Replace(t, Regex.Escape(machine), "%PC%", RegexOptions.IgnoreCase);
+        // Prénom + nom de famille cité dans le texte (listes de l'Insee) : remplacé, le reste du message est gardé
+        t = PersonNames.MaskFullNames(t);
         return t.Length > MaxText ? t[..MaxText] + "…" : t;
     }
 
@@ -101,13 +105,6 @@ public static class Feedback
         });
     }
 
-    /// <summary>Catégorie choisie à la main pour une application (sert à améliorer le classement automatique de tous).</summary>
-    public static void RecordClassification(string app, string category)
-    {
-        if (!Enabled || string.IsNullOrWhiteSpace(app) || category == null) return;
-        Record("classement", new() { ["application"] = Clean(app), ["categorie"] = category });
-    }
-
     /// <summary>
     /// Applications installées restées sans catégorie : leur nom et leur éditeur aident à les reconnaître chez tout le monde.
     /// Seuls les vrais logiciels installés sont concernés (dossiers de programmes ou Microsoft Store) : jamais un script,
@@ -123,13 +120,13 @@ public static class Feedback
             bool changed = false;
             foreach (var (name, publisher, target, packaged) in apps)
             {
-                if (string.IsNullOrWhiteSpace(name) || !(packaged || IsInstalledProgram(target))) continue;
+                if (!IsReportableApp(name, publisher, target, packaged)) continue;
                 var clean = Clean(name);
                 var print = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes("non-reconnue|" + clean.ToLowerInvariant())))[..16];
                 if (reported.Contains(print)) continue;
                 reported.Add(print);
                 changed = true;
-                Record("non-reconnue", new() { ["application"] = clean, ["editeur"] = Clean(publisher) });
+                Record("non-reconnue", new() { ["application"] = clean, ["editeur"] = SafePublisher(publisher) });
             }
             if (reported.Count > 3000) reported.RemoveRange(0, reported.Count - 3000);
             if (changed) Settings.Save();

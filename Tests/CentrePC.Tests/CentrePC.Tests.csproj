@@ -4,7 +4,9 @@
     Le code de Core\ est compilé directement ici (l'appli est un exe autonome, qu'un projet de tests ne peut pas référencer).
   -->
   <PropertyGroup>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <!-- Version de Windows visée : donne accès à la reconnaissance de texte (Windows.Media.Ocr) et à la lecture des PDF (Windows.Data.Pdf) -->
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
     <UseWPF>true</UseWPF>
     <Nullable>disable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -17,6 +19,7 @@
     <Compile Include="..\..\Core\**\*.cs" Link="Core\%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Include="..\..\GlobalUsings.cs" Link="GlobalUsings.cs" />
     <EmbeddedResource Include="..\..\Scripts\maj.ps1" LogicalName="maj.ps1" Link="maj.ps1" />
+    <EmbeddedResource Include="..\..\Catalogue\noms.gz" LogicalName="noms.gz" Link="noms.gz" Condition="Exists('..\..\Catalogue\noms.gz')" />
     <None Include="..\..\Scripts\maj.ps1" Link="Scripts\maj.ps1" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>

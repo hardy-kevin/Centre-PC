@@ -1,7 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <!-- Version de Windows visée : donne accès à la reconnaissance de texte (Windows.Media.Ocr) et à la lecture des PDF (Windows.Data.Pdf) -->
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
     <UseWPF>true</UseWPF>
     <Nullable>disable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -14,7 +16,7 @@
     <Company>Kevin Hardy</Company>
     <Copyright>© 2026 Kevin Hardy</Copyright>
     <Description>Applications, bureau et mises à jour de Windows en un seul endroit.</Description>
-    <Version>1.2.8</Version>
+    <Version>1.2.9</Version>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>true</SelfContained>
     <PublishSingleFile>true</PublishSingleFile>
@@ -34,6 +36,11 @@
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="Scripts\maj.ps1" LogicalName="maj.ps1" />
+    <!-- Prénoms et noms de l'Insee (protection des retours d'expérience), fabriqués par Outils\listes-noms.ps1 -->
+    <EmbeddedResource Include="Catalogue\noms.gz" LogicalName="noms.gz" Condition="Exists('Catalogue\noms.gz')" />
     <Resource Include="app.ico" />
   </ItemGroup>
+  <Target Name="VerifierListesNoms" BeforeTargets="Build" Condition="!Exists('Catalogue\noms.gz')">
+    <Warning Text="Catalogue\noms.gz absent : lancez Outils\listes-noms.ps1. Sans cette liste, les retours d'expérience ne citent aucune application ni aucun éditeur." />
+  </Target>
 </Project>

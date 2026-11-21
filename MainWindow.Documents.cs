@@ -362,6 +362,7 @@ public partial class MainWindow
             return;
         }
         DocumentLibrary.AddFolder(path);
+        Feedback.RecordFolder("ajout", path, ReportableNames());
         RefreshDocuments();
         ShowToast($"« {System.IO.Path.GetFileName(path)} » ajouté.");
     }
@@ -373,6 +374,7 @@ public partial class MainWindow
         try
         {
             var path = DocumentLibrary.CreateFolder(parent, name);
+            Feedback.RecordFolder("creation", path, ReportableNames());
             RefreshDocuments();
             ShowToast($"Dossier « {name.Trim()} » créé.");
             return path;

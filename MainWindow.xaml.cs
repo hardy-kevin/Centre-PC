@@ -169,7 +169,9 @@ public partial class MainWindow : Window
             if (Feedback.Enabled)
             {
                 var unknown = all.Where(a => a.Theme == Settings.Current.DefaultCategory).Select(a => (a.Name, a.Publisher, a.Target, a.Aumid != null)).ToList();
-                _ = Task.Run(() => Feedback.RecordUnknownApps(unknown));
+                // Applications présentes et leur catégorie : une fois chacune (logiciels installés uniquement)
+                var present = all.Where(a => a.Theme != Settings.Current.DefaultCategory).Select(a => (a.Name, a.Publisher, a.Target, a.Aumid != null, a.Theme)).ToList();
+                _ = Task.Run(() => { Feedback.RecordUnknownApps(unknown); Feedback.RecordPresentApps(present); });
             }
 
             RefreshAll();
@@ -283,6 +285,9 @@ public partial class MainWindow : Window
     {
         try { if (await RemoteCatalog.RefreshAsync(DateTime.Now, force)) await ReloadAsync(); }
         catch (Exception ex) { Log.Error("Catalogue", ex); }
+        // Listes de prénoms et noms (protection des retours) : une fois par mois au plus, signées comme le catalogue
+        try { await PersonNames.RefreshAsync(DateTime.Now); }
+        catch (Exception ex) { Log.Error("Listes de noms", ex); }
     }
 
     private void ShowWelcome_Click(object sender, RoutedEventArgs e) => WelcomeOverlay.Visibility = Visibility.Visible;

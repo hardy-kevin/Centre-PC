@@ -1,6 +1,7 @@
 using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace CentrePC.Core;
 
@@ -14,6 +15,12 @@ public sealed class CatalogData
     public Dictionary<string, string> Classement { get; set; } = new();
     /// <summary>Fonctions coupées à distance en attendant un correctif (voir <see cref="RemoteCatalog.Switches"/>).</summary>
     public List<string> Desactive { get; set; } = new();
+    /// <summary>Organismes à reconnaître dans les documents : nom affiché → mots ou expressions à chercher (texte simple).</summary>
+    public Dictionary<string, List<string>> Organismes { get; set; } = new();
+    /// <summary>Mots-clés ajoutés aux catégories : catégorie → mots-clés (les choix de l'utilisateur restent prioritaires).</summary>
+    public Dictionary<string, List<string>> MotsCles { get; set; } = new();
+    /// <summary>Éditeurs et marques connus, à ne jamais prendre pour une personne (retours d'expérience).</summary>
+    public List<string> Editeurs { get; set; } = new();
 }
 
 /// <summary>
@@ -92,7 +99,15 @@ public static class RemoteCatalog
         {
             var d = JsonSerializer.Deserialize<CatalogData>(content, Json);
             if (d == null || d.Version <= 0) return null;
-            d.Classement ??= new(); d.Desactive ??= new();
+            d.Classement ??= new(); d.Desactive ??= new(); d.Organismes ??= new(); d.MotsCles ??= new(); d.Editeurs ??= new();
+            // Textes simples et courts seulement (jamais d'expression régulière : tout est échappé à l'usage)
+            static List<string> Short(IEnumerable<string> l) => (l ?? Enumerable.Empty<string>())
+                .Where(x => !string.IsNullOrWhiteSpace(x) && x.Length <= 60).Select(x => x.Trim()).Take(200).ToList();
+            d.Organismes = d.Organismes.Where(kv => !string.IsNullOrWhiteSpace(kv.Key) && kv.Key.Length <= 60).Take(2000)
+                            .ToDictionary(kv => kv.Key.Trim(), kv => Short(kv.Value), StringComparer.OrdinalIgnoreCase);
+            d.MotsCles = d.MotsCles.Where(kv => !string.IsNullOrWhiteSpace(kv.Key)).Take(200)
+                            .ToDictionary(kv => kv.Key.Trim(), kv => Short(kv.Value), StringComparer.OrdinalIgnoreCase);
+            d.Editeurs = Short(d.Editeurs.Take(5000));
             return d;
         }
         catch { return null; }
@@ -107,7 +122,26 @@ public static class RemoteCatalog
             foreach (var (name, category) in d.Classement)
                 if (!string.IsNullOrWhiteSpace(name) && !string.IsNullOrWhiteSpace(category)) map[Settings.Normalize(name)] = category.Trim();
         _byName = map;
+        // Organismes : chaque expression est cherchée telle quelle (échappée), en mot entier
+        _orgPatterns = (d?.Organismes ?? new()).Where(kv => kv.Value.Count > 0)
+            .Select(kv => (kv.Key, new Regex(@"(?<![\p{L}\d])(" + string.Join("|", kv.Value.Select(Regex.Escape)) + @")(?![\p{L}\d])",
+                                             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(200))))
+            .ToList();
+        // Mots-clés ajoutés : pris en compte par le classement des applications
+        if (Settings.Current != null) Settings.Rebuild();
     }
+
+    private static List<(string Name, Regex Rx)> _orgPatterns = new();
+
+    /// <summary>Organismes du catalogue (nom affiché → expressions).</summary>
+    public static IReadOnlyDictionary<string, List<string>> Organisations => _data?.Organismes ?? new Dictionary<string, List<string>>();
+    /// <summary>Organismes du catalogue, prêts à chercher dans un texte.</summary>
+    public static IEnumerable<(string Name, Regex Rx)> OrganisationPatterns => _orgPatterns;
+    /// <summary>Éditeurs connus du catalogue.</summary>
+    public static IEnumerable<string> Publishers => _data?.Editeurs ?? Enumerable.Empty<string>();
+    /// <summary>Mots-clés que le catalogue ajoute à une catégorie.</summary>
+    public static IEnumerable<string> ExtraKeywords(string category) =>
+        category != null && _data?.MotsCles != null && _data.MotsCles.TryGetValue(category, out var l) ? l : Enumerable.Empty<string>();
 
     /// <summary>Catégorie indiquée par le catalogue pour ce nom (déjà normalisé), ou null.</summary>
     public static string Category(string normalizedName) =>
@@ -144,7 +178,8 @@ public static class RemoteCatalog
         File.WriteAllText(SigPath, signature.Trim());
         if (d.Version != Settings.Current.CatalogVersion) { Settings.Current.CatalogVersion = d.Version; Settings.Save(); }
         Apply(d);
-        if (changed) Log.Info($"Catalogue : version {d.Version} du {d.Date} ({d.Classement.Count} application(s), {d.Desactive.Count} fonction(s) coupée(s))");
+        if (changed) Log.Info($"Catalogue : version {d.Version} du {d.Date} ({d.Classement.Count} application(s), {d.Organismes.Count} organisme(s), "
+                              + $"{d.MotsCles.Sum(m => m.Value.Count)} mot(s)-clé(s), {d.Desactive.Count} fonction(s) coupée(s))");
         return changed;
     }
 

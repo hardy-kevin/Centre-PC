@@ -437,6 +437,8 @@ public partial class MainWindow
         }
         Settings.Current.QuickAccessHotkey = k.Serialize();
         Settings.Save();
+        Feedback.RecordHotkey(k.Label, check.State switch { HotkeyState.Freeable => "libere", HotkeyState.LikelyUsed => "accepte", _ => "aucun" },
+                              HotkeyConflicts.Suggestions.Contains(k));
         ApplyQuickAccess();
         BuildHotkeyList();
         // L'ancien raccourci est rendu : l'application à qui il revient ne le reprend qu'à son prochain démarrage

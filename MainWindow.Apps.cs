@@ -104,8 +104,13 @@ public partial class MainWindow
 
     private async Task RunOnlineAsync(bool silent)
     {
-        var todo = _apps.Where(a => a.Theme == Settings.Current.DefaultCategory && !Settings.IsHidden(a.Name)
-                                    && !OnlineClassifier.AlreadySearched(a.Name)).ToList();
+        // Jamais cherchées (restées dans « Autres ») : toutes ; résultats à revoir (non trouvées depuis 30 jours, trouvées
+        // depuis 6 mois) : quelques-unes à chaque passage, les plus anciennes d'abord
+        var fresh = _apps.Where(a => a.Theme == Settings.Current.DefaultCategory && !Settings.IsHidden(a.Name) && OnlineClassifier.NeverSearched(a.Name));
+        var due = _apps.Where(a => !Settings.IsHidden(a.Name) && (a.Theme == Settings.Current.DefaultCategory || OnlineClassifier.SourceOf(a.Name) != null))
+                       .Select(a => (a, due: OnlineClassifier.IsDue(a.Name, out var searched), searched)).Where(x => x.due)
+                       .OrderBy(x => x.searched).Take(OnlineClassifier.MaxDuePerRun).Select(x => x.a);
+        var todo = fresh.Concat(due).Distinct().ToList();
         if (todo.Count == 0 || _onlineRunning) { if (!silent) ShowToast("Aucune nouvelle application à identifier en ligne."); return; }
         if (!await Network.IsOnlineAsync()) { if (!silent) ShowToast("Pas de connexion Internet : le classement en ligne reprendra ultérieurement."); return; }
         _onlineRunning = true;
@@ -685,7 +690,10 @@ public partial class MainWindow
             ShowToast(category == null ? $"{a.Name} : catégorie automatique" : $"{a.Name} → {category}", Undo);
             return;
         }
+        var previous = a.Theme;
         Settings.SetOverride(a.Name, category);
+        // Retour d'expérience (avec l'accord) : logiciel installé seulement, catégorie d'origine ou « personnalisé »
+        Feedback.RecordClassification(a.Name, a.Publisher, a.Target, a.Aumid != null, category, previous);
         ReclassifyAll();
         RefreshAll();
         ShowToast(category == null ? $"{a.Name} : catégorie automatique" : $"{a.Name} → {category}", DesktopManager.FoldersMode ? null : Undo);

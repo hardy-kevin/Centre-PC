@@ -112,6 +112,7 @@ public partial class MainWindow
         folders[folder] = names;
         Settings.Current.SuiteExcluded.RemoveAll(n => names.Contains(n, StringComparer.CurrentCultureIgnoreCase));
         Settings.Save();
+        Feedback.RecordGroup(target.IsUserGroup ? "ajout" : "creation", folder, AppsInfo(names), ReportableNames());
         RefreshAll();
         ShowToast($"« {source.Label} » rangée dans « {folder} »");
     }
@@ -125,6 +126,20 @@ public partial class MainWindow
             return "Un dossier porte déjà ce nom.";
         return null;
     }
+
+    /// <summary>Applications de la liste (nom, éditeur, cible, Store) pour les retours d'expérience.</summary>
+    private List<(string name, string publisher, string target, bool packaged)> AppsInfo(IEnumerable<string> names)
+    {
+        var set = names.ToHashSet(StringComparer.CurrentCultureIgnoreCase);
+        return _apps.SelectMany(a => a.IsSuite ? a.Members : new List<AppItem> { a }).Where(a => set.Contains(a.Name))
+                    .GroupBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase).Select(g => g.First())
+                    .Select(a => (a.Name, a.Publisher, a.Target, a.Aumid != null)).ToList();
+    }
+
+    /// <summary>Noms des logiciels réellement installés (seuls noms d'applications qu'un retour peut citer).</summary>
+    private List<string> ReportableNames() =>
+        _apps.SelectMany(a => a.IsSuite ? a.Members : new List<AppItem> { a })
+             .Where(a => Feedback.IsReportableApp(a.Name, a.Publisher, a.Target, a.Aumid != null)).Select(a => a.Name).Distinct().ToList();
 
     /// <summary>Actions propres aux regroupements, ajoutées au menu d'une suite.</summary>
     private void AddGroupActions(ContextMenu menu, AppItem suite)
@@ -145,6 +160,7 @@ public partial class MainWindow
                 if (!Settings.Current.SuiteExcluded.Contains(app.Name, StringComparer.CurrentCultureIgnoreCase))
                     Settings.Current.SuiteExcluded.Add(app.Name);
                 Settings.Save();
+                Feedback.RecordGroup(suite.IsUserGroup ? "retrait" : "sortie-groupe-auto", suite.Name, AppsInfo(new[] { app.Name }), ReportableNames());
                 RefreshAll();
                 ShowToast($"« {app.Label} » a sa propre tuile");
             }));
@@ -175,6 +191,7 @@ public partial class MainWindow
                 foreach (var m in suite.Members.Where(m => !Settings.Current.SuiteExcluded.Contains(m.Name, StringComparer.CurrentCultureIgnoreCase)))
                     Settings.Current.SuiteExcluded.Add(m.Name);
                 Settings.Save();
+                Feedback.RecordGroup("dissociation", suite.Name, AppsInfo(suite.Members.Select(m => m.Name)), ReportableNames());
                 RefreshAll();
                 ShowToast($"Les applications de « {suite.Name} » ont chacune leur tuile.");
             }));

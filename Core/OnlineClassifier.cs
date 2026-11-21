@@ -4,7 +4,7 @@ using System.Text.RegularExpressions;
 
 namespace CentrePC.Core;
 
-/// <summary>Résultat mémorisé d'une recherche en ligne (une seule recherche par appli).</summary>
+/// <summary>Résultat mémorisé d'une recherche en ligne (refaite après un délai : voir <see cref="OnlineClassifier.RetryNotFound"/>).</summary>
 public class OnlineResult
 {
     public string Category { get; set; }   // null = rien trouvé
@@ -144,10 +144,37 @@ public static class OnlineClassifier
         return _cache.TryGetValue(Key(name), out var r) && r.Category != null && Settings.IsAvailable(r.Category) ? r.Category : null;
     }
 
+    /// <summary>Application non trouvée en ligne : nouvel essai après ce délai (les catalogues s'enrichissent).</summary>
+    public static readonly TimeSpan RetryNotFound = TimeSpan.FromDays(30);
+    /// <summary>Application trouvée : vérifiée de nouveau après ce délai (sa fiche a pu changer).</summary>
+    public static readonly TimeSpan RecheckFound = TimeSpan.FromDays(180);
+    /// <summary>Applications revues au plus par passage (nouvel essai ou vérification) : jamais une avalanche de requêtes.</summary>
+    public const int MaxDuePerRun = 25;
+
+    private static bool Expired(OnlineResult r) => DateTime.Now - r.Date > (r.Category == null ? RetryNotFound : RecheckFound);
+
+    /// <summary>Déjà cherchée, et le résultat n'a pas encore à être revu.</summary>
     public static bool AlreadySearched(string name)
     {
         if (_cache == null) Load();
-        return _cache.ContainsKey(Key(name));
+        return _cache.TryGetValue(Key(name), out var r) && !Expired(r);
+    }
+
+    /// <summary>Jamais cherchée en ligne.</summary>
+    public static bool NeverSearched(string name)
+    {
+        if (_cache == null) Load();
+        return !_cache.ContainsKey(Key(name));
+    }
+
+    /// <summary>Résultat à revoir : non trouvée depuis plus de 30 jours, ou trouvée depuis plus de 6 mois. Date du résultat en sortie.</summary>
+    public static bool IsDue(string name, out DateTime searched)
+    {
+        if (_cache == null) Load();
+        searched = DateTime.MinValue;
+        if (!_cache.TryGetValue(Key(name), out var r)) return false;
+        searched = r.Date;
+        return Expired(r);
     }
 
     public static void Forget()
@@ -230,7 +257,12 @@ public static class OnlineClassifier
                         ?? await Try(() => FromGitHub(name, app, homepage))
                         ?? await Try(() => FromWikidata(name));
                 }
-                lock (_cache) _cache[Key(app.Name)] = r ?? new OnlineResult { Date = DateTime.Now };
+                lock (_cache)
+                {
+                    // Vérification d'une application déjà trouvée : sans nouvelle réponse, l'ancien résultat est gardé (et redaté)
+                    if (r == null && _cache.TryGetValue(Key(app.Name), out var previous) && previous.Category != null) { previous.Date = DateTime.Now; r = previous; }
+                    _cache[Key(app.Name)] = r ?? new OnlineResult { Date = DateTime.Now };
+                }
                 if (r?.Category != null) Interlocked.Increment(ref found);
             }
             catch { }

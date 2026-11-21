@@ -1,0 +1,49 @@
+# Met à jour chaque mois les listes de prénoms et de noms de famille (Insee) qui protègent les retours d'expérience.
+# Si l'Insee a publié du nouveau, une demande de fusion est ouverte : rien n'est signé ni publié automatiquement.
+# Après la fusion, sur votre PC :  .\Catalogue\signer.ps1 -Fichier noms.gz   puis   cd Serveur ; npx wrangler deploy
+#
+# Réglage nécessaire une fois : Settings > Actions > General > « Allow GitHub Actions to create and approve pull requests ».
+name: Listes de noms
+
+on:
+  schedule:
+    - cron: '17 4 3 * *'      # le 3 de chaque mois, 4 h 17 (UTC)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  listes:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fabriquer les listes
+        shell: pwsh
+        run: .\Outils\listes-noms.ps1
+
+      - name: Ouvrir une demande de fusion si les listes ont changé
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git add Catalogue/noms.gz Serveur/noms-donnees.js
+          git diff --cached --quiet
+          if ($LASTEXITCODE -eq 0) { Write-Host 'Listes inchangées.'; exit 0 }
+          $branche = "listes-noms-$(Get-Date -Format 'yyyyMMdd')"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git switch -c $branche
+          git commit -m 'Listes de noms : mise à jour Insee'
+          git push --force origin $branche
+          $corps = @'
+          Nouvelles listes de prénoms et de noms de famille publiées par l'Insee.
+
+          Après la fusion, sur votre PC (la clé privée ne quitte jamais votre PC) :
+          1. `git pull`
+          2. `.\Catalogue\signer.ps1 -Fichier noms.gz` puis envoyer `Catalogue\noms.gz.sig`
+          3. `cd Serveur ; npx wrangler deploy` (le serveur filtre avec la même liste)
+          '@
+          gh pr create --base $env:GITHUB_REF_NAME --head $branche --title 'Listes de noms : mise à jour Insee' --body $corps

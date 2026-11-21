@@ -1,3 +1,3 @@
-## Centre PC 1.2.8
+## Centre PC 1.2.9
 
-- Compatibilité entre la version GitHub et Microsoft Store
+- Amélioration des remontées utilisateur

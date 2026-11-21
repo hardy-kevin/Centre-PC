@@ -117,6 +117,8 @@ public partial class MainWindow
 
     private void CloseDocPlan()
     {
+        _nameCts?.Cancel();
+        _renaming = null;
         HideZoom();
         DocPlanOverlay.Visibility = Visibility.Collapsed;
         RefreshDocuments();
@@ -137,7 +139,7 @@ public partial class MainWindow
               + (_planManual.Count > 0 ? " Les éléments sans dossier évident sont en fin de liste : à vous de choisir." : "")
             : "Cochez les dossiers à créer. Vous pourrez les renommer, en ajouter ou en retirer ensuite.";
         DocPlanReassurance.Text = hasItems
-            ? "Réversible : rien n'est supprimé ni renommé, chaque élément peut retrouver sa place en un clic."
+            ? "Réversible : rien n'est supprimé, rien n'est renommé sans votre accord, chaque élément peut retrouver sa place en un clic."
             : "Seuls des dossiers vides sont créés : rien n'est déplacé.";
         DocPlanReassurance.ToolTip = Reassurance;
         DocPlanSplit.Visibility = hasItems ? Visibility.Visible : Visibility.Collapsed;
@@ -147,7 +149,9 @@ public partial class MainWindow
             _planCurrent = null;
             _planMulti.Clear();
             _showMulti = false;
+            _renaming = null;
             BuildPlanItems();
+            StartNameSuggestions();
             // Aperçus nets préparés en arrière-plan, dans l'ordre de la liste : l'agrandissement sera immédiat
             _ = DocPreview.PrewarmAsync(_planOrder.Where(x => !x.IsFolder).Select(x => x.Source).ToList());
         }
@@ -286,6 +290,7 @@ public partial class MainWindow
             r.dest.Text = p.Selected ? "→ " + SplitLabel(p.DestinationLabel ?? DocPlanner.FriendlyDir(p.Destination)).name : "Ne sera pas rangé";
             r.row.Opacity = p.Selected ? 1 : 0.55;
         }
+        if (!p.Trash && _nameSuggestions.ContainsKey(p)) r.dest.Text += "  ·  nom proposé";
         var f = FolderOf(p);
         if (f != null) SyncGroup(f);
         if (rebuildDetail && p == _planCurrent) BuildPlanDetail();
@@ -348,6 +353,11 @@ public partial class MainWindow
     {
         _planMulti.RemoveWhere(x => !_planOrder.Contains(x));
         _showMulti = false;
+        if (_renaming != null && _renaming != p)
+        {
+            _renaming = null;   // autre élément : la saisie en cours est abandonnée
+            Dispatcher.BeginInvoke(new Action(FlushContentPending));
+        }
         _planCurrent = p;
         var highlight = new SolidColorBrush(Color.FromArgb(0x40, 0x7C, 0x5C, 0xFF));
         foreach (var (item, r) in _planRows) r.row.Background = item == p ? highlight : Brushes.Transparent;
@@ -383,6 +393,10 @@ public partial class MainWindow
             ? SmallButton("\uE7A7", "Ne pas supprimer", (_, _) => ApplyToSelection(sel, x => x.Trash = false))
             : SmallButton("\uE74D", "Supprimer", (_, _) => ApplyToSelection(sel, x => x.Trash = true),
                           tip: "Envoyés à la Corbeille de Windows quand vous validez (récupérables) · touche Suppr"));
+        int named = sel.Count(x => !x.Trash && _nameSuggestions.ContainsKey(x));
+        if (named > 0)
+            acts.Insert(1, SmallButton("\uE8AC", $"Utiliser les noms proposés ({named})", async (_, _) => await ApplySuggestedNamesAsync(sel),
+                                       tip: "Renomme les éléments sélectionnés d'après leur contenu, puis cherche où les ranger (annulable)"));
         acts.Add(SmallButton("\uE8E6", "Désélectionner", (_, _) => { _planMulti.Clear(); ChecksChanged(); }));
         box.Children.Add(Actions(acts.ToArray()));
         DocPlanDetail.Children.Add(box);
@@ -496,10 +510,13 @@ public partial class MainWindow
         var what = p.IsFolder ? "le dossier" : "le fichier";
         var origin = Square("ORIGINE", preview, new UIElement[]
         {
-            Line(p.Name, strong: true, tip: p.Name),
+            _renaming == p ? NameEditor(p) : Line(p.Name, strong: true, tip: p.Name),
             Line(p.Origin == "Bureau" ? "Sur le bureau" : $"Dans {p.Origin}", tip: p.Source),
             Line(DetailsOf(p), size: 12),
+            NameHint(p),
+            _renaming == p ? null :
             Actions(SmallButton("", "Ouvrir", (_, _) => OpenPath(p.Source), tip: $"Ouvrir {what} avec l'application habituelle"),
+                    SmallButton("", "Renommer", (_, _) => StartRename(p), tip: "Changer le nom de l'élément (F2). Centre PC regarde ensuite où le ranger"),
                     SmallButton("", "Afficher l'emplacement", (_, _) => DocumentLibrary.ShowInExplorer(p.Source), tip: "Ouvrir son dossier dans l'Explorateur, l'élément sélectionné"),
                     SmallButton(p.Trash ? "" : "", p.Trash ? "Ne pas supprimer" : (p.IsFolder ? "Supprimer le dossier" : "Supprimer le fichier"),
                                 (_, _) => ToggleTrash(p),
@@ -821,6 +838,7 @@ public partial class MainWindow
         p.DestinationLabel = to.Label;
         p.DestinationExists = to.Exists;
         p.Reason = "choisi par vous";
+        p.UserChosen = true;
         p.Selected = true;
         to.Items.Add(p);
         if (!rebuild) return;
@@ -1060,6 +1078,360 @@ public partial class MainWindow
                                                          : $"{moved} éléments rangés. « Annuler » les remet où ils étaient."));
     }
 
+    // ------------------------------------------------------------------ renommage et nom proposé
+    /// <summary>Noms proposés d'après le contenu (lu sur ce PC), par élément.</summary>
+    private readonly Dictionary<DocProposal, NameSuggestion> _nameSuggestions = new();
+    /// <summary>Éléments dont le contenu est en cours de lecture.</summary>
+    private readonly HashSet<DocProposal> _nameReading = new();
+    private CancellationTokenSource _nameCts;
+    /// <summary>Élément dont le nouveau nom est en cours de saisie (null : aucun).</summary>
+    private DocProposal _renaming;
+    private string _renameInitial;
+
+    /// <summary>
+    /// Lit en arrière-plan le contenu des fichiers du plan (début du texte, ou texte d'une photo, d'une numérisation, de la
+    /// première page d'un PDF) pour proposer un nom : d'abord les éléments sans proposition de dossier, ensuite les autres.
+    /// </summary>
+    private async void StartNameSuggestions()
+    {
+        _nameCts?.Cancel();
+        var cts = _nameCts = new CancellationTokenSource();
+        _contentPending.Clear();
+        _nameSuggestions.Clear();
+        _nameReading.Clear();
+        var queue = _planOrder.Where(x => !x.IsFolder && DocNaming.CanRead(x.Source)).OrderBy(x => x.IsManual ? 0 : 1).ToList();
+        foreach (var p in queue) _nameReading.Add(p);
+        var names = InstalledNames();
+        _planUserFolders = await Task.Run(() => DocPlanner.UserFolders(names));
+        foreach (var p in queue)
+        {
+            if (cts.IsCancellationRequested) return;
+            await SuggestNameAsync(p, cts.Token);
+        }
+    }
+
+    private async Task SuggestNameAsync(DocProposal p, CancellationToken ct)
+    {
+        var path = p.Source;
+        NameSuggestion s = null;
+        try { s = await Task.Run(() => DocNaming.SuggestAsync(path, ct), ct); }
+        catch (OperationCanceledException) { return; }
+        catch (Exception ex) { Log.Error("Nom proposé pour " + path, ex); }
+        if (ct.IsCancellationRequested) return;
+        _nameReading.Remove(p);
+        if (p.Source != path) return;   // renommé entre-temps
+        if (s != null) _nameSuggestions[p] = s; else _nameSuggestions.Remove(p);
+        // Nom en cours de saisie : la liste ne bouge pas sous les doigts de l'utilisateur, on applique après
+        if (s != null && _renaming != null) { _contentPending.Add(p); RefreshPlanItem(p, rebuildDetail: false, footer: false); return; }
+        if (s != null && ApplyContentDestination(p, s))
+        {
+            // Le contenu a donné un meilleur dossier : la liste se réorganise, la sélection et l'élément affiché restent
+            bool multi = _showMulti;
+            BuildPlanItems();
+            if (multi) ChecksChanged();
+            return;
+        }
+        RefreshPlanItem(p, rebuildDetail: false, footer: false);
+        if (_renaming == null && ((p == _planCurrent && !_showMulti) || (_showMulti && _planMulti.Contains(p)))) BuildPlanDetail();
+    }
+
+    /// <summary>Nom proposé (ou lecture en cours) sous le nom de l'élément.</summary>
+    private UIElement NameHint(DocProposal p)
+    {
+        if (_renaming == p || p.Trash) return null;
+        var ext = p.IsFolder ? "" : Path.GetExtension(p.Source);
+        if (_nameSuggestions.TryGetValue(p, out var s))
+        {
+            var sp = new StackPanel { Margin = new Thickness(0, 10, 0, 0) };
+            sp.Children.Add(new TextBlock { Text = "NOM PROPOSÉ", Style = (Style)FindResource("Subtle"), FontSize = 11, FontWeight = FontWeights.SemiBold });
+            sp.Children.Add(new TextBlock { Text = s.Name + ext, FontSize = 13.5, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 3, 0, 0),
+                                            ToolTip = Capitalize(s.Why) + ". Lu sur ce PC : rien n'est envoyé." });
+            sp.Children.Add(Line(Capitalize(s.Why), size: 11.5));
+            sp.Children.Add(Actions(
+                SmallButton("", "Utiliser ce nom", (_, _) => CommitRename(p, FreeName(p, s.Name)), tip: "Renomme l'élément, puis cherche où le ranger (annulable)"),
+                SmallButton("", "Modifier", (_, _) => StartRename(p, s.Name), tip: "Partir de ce nom et le corriger")));
+            return sp;
+        }
+        if (_nameReading.Contains(p)) return Line("Lecture du document pour proposer un nom…", size: 12);
+        if (p.IsManual && !p.IsFolder)
+            return Line("Pas de nom à proposer : renommez-le d'après son contenu (F2), Centre PC regardera ensuite s'il peut le ranger.", size: 12);
+        return null;
+    }
+
+    private List<string> _planUserFolders;
+    private readonly HashSet<DocProposal> _contentPending = new();
+
+    /// <summary>Dossiers d'après le contenu arrivés pendant une saisie de nom : appliqués une fois la saisie finie.</summary>
+    private void FlushContentPending()
+    {
+        bool changed = false;
+        foreach (var x in _contentPending.ToList())
+            if (_nameSuggestions.TryGetValue(x, out var s) && ApplyContentDestination(x, s)) changed = true;
+        _contentPending.Clear();
+        if (!changed) return;
+        bool multi = _showMulti;
+        BuildPlanItems();
+        if (multi) ChecksChanged();
+    }
+
+    /// <summary>
+    /// Le contenu dit ce qu'est le document (photo d'un certificat de cession, PDF « scan001 » qui est une facture…) :
+    /// il est proposé dans le dossier de ce type, sans attendre le renommage. Seulement pour un élément sans proposition,
+    /// ou proposé ailleurs que dans Documents d'après sa seule forme (photo d'appareil, image, téléchargement). Un dossier
+    /// choisi par l'utilisateur n'est jamais changé. Vrai si l'élément a changé de dossier.
+    /// </summary>
+    private bool ApplyContentDestination(DocProposal p, NameSuggestion s)
+    {
+        if (p.UserChosen || p.Trash || p.IsFolder || _planUserFolders == null) return false;
+        var docs = DocumentLibrary.Roots.FirstOrDefault(r => r.Key == "documents")?.Path;
+        if (string.IsNullOrEmpty(docs)) return false;
+        // Déjà rangé dans Documents d'après son nom (« Facture EDF.pdf » → Factures) : le nom de l'utilisateur prime
+        if (!p.IsManual && DocumentLibrary.IsUnder(p.Destination, docs)) return false;
+        DocProposal fresh;
+        try
+        {
+            var asNamed = Path.Combine(Path.GetDirectoryName(p.Source) ?? "", DocNaming.Clean(s.Name) + Path.GetExtension(p.Source));
+            fresh = DocPlanner.Propose(asNamed, false, p.Origin, _planUserFolders);
+        }
+        catch (Exception ex) { Log.Error("Dossier d'après le contenu " + p.Source, ex); return false; }
+        if (fresh == null || fresh.IsManual || !DocumentLibrary.IsUnder(fresh.Destination, docs)) return false;
+        if (!p.IsManual && string.Equals(fresh.Destination, p.Destination, StringComparison.OrdinalIgnoreCase)) return false;
+        MovePlanItem(p, fresh.Destination, $"son contenu : « {s.Type.ToLowerInvariant()} »", selected: p.IsManual || p.Selected);
+        return true;
+    }
+
+    /// <summary>Place l'élément dans le dossier <paramref name="dest"/> du plan (créé dans le plan s'il n'y est pas).</summary>
+    private void MovePlanItem(DocProposal p, string dest, string reason, bool selected)
+    {
+        var from = FolderOf(p);
+        from?.Items.Remove(p);
+        if (from != null && from.Items.Count == 0) _plan.Remove(from);
+        _planManual.Remove(p);
+        p.Keep = false;
+        var to = _plan.FirstOrDefault(f => f.Path.Equals(dest, StringComparison.OrdinalIgnoreCase));
+        if (to == null)
+        {
+            to = new DocFolderPlan { Path = dest, Label = DocPlanner.FriendlyDir(dest), Exists = Directory.Exists(dest) };
+            _plan.Add(to);
+        }
+        p.Destination = dest;
+        p.DestinationLabel = to.Label;
+        p.DestinationExists = to.Exists;
+        p.Reason = reason;
+        p.Selected = selected;
+        to.Items.Add(p);
+    }
+
+    private static string Capitalize(string s) => string.IsNullOrEmpty(s) ? s : char.ToUpper(s[0]) + s[1..];
+
+    /// <summary>Zone de saisie du nouveau nom (l'extension est gardée), vérifiée à chaque frappe.</summary>
+    private FrameworkElement NameEditor(DocProposal p)
+    {
+        var ext = p.IsFolder ? "" : Path.GetExtension(p.Source);
+        var box = new TextBox
+        {
+            Text = _renameInitial ?? (p.IsFolder ? p.Name : Path.GetFileNameWithoutExtension(p.Source)),
+            FontSize = 14, Padding = new Thickness(6, 4, 6, 4), VerticalContentAlignment = VerticalAlignment.Center
+        };
+        System.Windows.Automation.AutomationProperties.SetName(box, "Nouveau nom de " + p.Name);
+        var row = new Grid();
+        row.ColumnDefinitions.Add(new ColumnDefinition());
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.Children.Add(box);
+        if (ext.Length > 0)
+        {
+            var e = new TextBlock { Text = ext, Style = (Style)FindResource("Subtle"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0),
+                                    ToolTip = "L'extension est gardée : le fichier s'ouvre toujours avec la même application" };
+            Grid.SetColumn(e, 1); row.Children.Add(e);
+        }
+        var error = new TextBlock { Foreground = Brushes.IndianRed, FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 0), Visibility = Visibility.Collapsed };
+        var ok = SmallButton("", "Renommer", (_, _) => CommitRename(p, box.Text), tip: "Entrée");
+        var cancel = SmallButton("", "Annuler", (_, _) => CancelRename(), tip: "Échap");
+        box.TextChanged += (_, _) =>
+        {
+            var err = DocNaming.Validate(box.Text, p.Source, p.IsFolder);
+            error.Text = err ?? "";
+            error.Visibility = err == null ? Visibility.Collapsed : Visibility.Visible;
+            ok.IsEnabled = err == null;
+        };
+        box.KeyDown += (_, e) =>
+        {
+            if (e.Key == Key.Enter) { e.Handled = true; if (ok.IsEnabled) CommitRename(p, box.Text); }
+            else if (e.Key == Key.Escape) { e.Handled = true; CancelRename(); }
+        };
+        box.Loaded += (_, _) => { box.Focus(); Keyboard.Focus(box); box.SelectAll(); };
+        var sp = new StackPanel();
+        sp.Children.Add(row);
+        sp.Children.Add(error);
+        sp.Children.Add(Actions(ok, cancel));
+        return sp;
+    }
+
+    private void StartRename(DocProposal p, string initial = null)
+    {
+        if (p == null) return;
+        if (_planCurrent != p) SelectPlanItem(p);
+        _renaming = p;
+        _renameInitial = initial;
+        BuildPlanDetail();
+    }
+
+    private void CancelRename()
+    {
+        _renaming = null;
+        _renameInitial = null;
+        BuildPlanDetail();
+        FlushContentPending();
+    }
+
+    /// <summary>Nom libre à cet endroit : le nom voulu, sinon suivi de « (2) », « (3) »…</summary>
+    private static string FreeName(DocProposal p, string baseName)
+    {
+        var clean = DocNaming.Clean(baseName);
+        var name = clean;
+        for (int i = 2; i < 100 && DocNaming.Validate(name, p.Source, p.IsFolder) == DocNaming.NameTaken; i++)
+            name = $"{clean} ({i})";
+        return name;
+    }
+
+    /// <summary>
+    /// Renomme l'élément sur le disque (annulable : toast, Historique ; « Remettre à sa place » rend aussi l'ancien nom),
+    /// puis regarde de nouveau où le ranger d'après son nouveau nom. Les cases cochées et l'élément affiché sont gardés.
+    /// </summary>
+    private async void CommitRename(DocProposal p, string newName)
+    {
+        var err = DocNaming.Validate(newName, p.Source, p.IsFolder);
+        if (err != null) { ShowToast(err); return; }
+        var old = p.Source;
+        // Pour le retour d'expérience : nom proposé utilisé tel quel, corrigé, ou remplacé par un autre
+        _nameSuggestions.TryGetValue(p, out var sug);
+        var startedFrom = _renameInitial;
+        string usage = sug == null ? "aucun"
+            : newName.Trim() == DocNaming.Clean(sug.Name) || newName.Trim().StartsWith(DocNaming.Clean(sug.Name) + " (") ? "utilise"
+            : startedFrom == sug.Name ? "modifie" : "ignore";
+        if (!RenameOnDisk(p, newName)) { CancelRename(); return; }
+        _renaming = null;
+        _renameInitial = null;
+        var names = InstalledNames();
+        var userFolders = _planUserFolders ?? await Task.Run(() => DocPlanner.UserFolders(names));
+        Repropose(p, userFolders);
+        Feedback.RecordRename(p.Source, p.IsFolder, sug, usage, !p.IsManual);
+        _planCurrent = p;
+        _contentPending.Remove(p);
+        BuildPlanItems();
+        FlushContentPending();
+        var what = $"Renommé en « {p.Name} »";
+        ShowToast(p.IsManual ? $"{what}. Toujours pas de dossier évident : choisissez-en un, ou laissez-le à sa place."
+                             : $"{what} : il sera rangé dans {SplitLabel(p.DestinationLabel ?? DocPlanner.FriendlyDir(p.Destination)).name}.",
+                  () => UndoRenames(new List<(DocProposal, string)> { (p, old) }));
+    }
+
+    /// <summary>« Utiliser les noms proposés » pour la sélection : un seul message, une seule annulation pour tous.</summary>
+    private async Task ApplySuggestedNamesAsync(List<DocProposal> sel)
+    {
+        var done = new List<(DocProposal p, string old)>();
+        var used = new Dictionary<DocProposal, NameSuggestion>();
+        int failed = 0;
+        foreach (var x in sel.Where(x => !x.Trash))
+        {
+            if (!_nameSuggestions.TryGetValue(x, out var s)) continue;
+            var old = x.Source;
+            if (RenameOnDisk(x, FreeName(x, s.Name), quiet: true)) { done.Add((x, old)); used[x] = s; } else failed++;
+        }
+        if (done.Count == 0) { if (failed > 0) ShowToast("Renommage impossible (fichiers ouverts ?)."); return; }
+        var names = InstalledNames();
+        var userFolders = await Task.Run(() => DocPlanner.UserFolders(names));
+        foreach (var (x, _) in done)
+        {
+            Repropose(x, userFolders);
+            Feedback.RecordRename(x.Source, x.IsFolder, used[x], "utilise", !x.IsManual);
+        }
+        BuildPlanItems();
+        ChecksChanged();   // la sélection reste cochée et affichée
+        int sorted = done.Count(d => !d.p.IsManual);
+        ShowToast(Plural(done.Count, "élément renommé", "éléments renommés")
+                  + (sorted > 0 ? $", dont {sorted} avec un dossier où le ranger" : "")
+                  + (failed > 0 ? $". {failed} n'ont pas pu l'être (fichier ouvert ?)" : "") + ".",
+                  () => UndoRenames(done));
+    }
+
+    /// <summary>Renommage sur le disque et mise à jour de l'élément. Faux (avec un message) si impossible.</summary>
+    private bool RenameOnDisk(DocProposal p, string newName, bool quiet = false)
+    {
+        var old = p.Source;
+        _previewHost?.Unload();   // l'aperçu de Windows peut garder le fichier ouvert
+        try
+        {
+            var renamed = DocNaming.Rename(old, newName, p.IsFolder);
+            if (string.Equals(renamed, old, StringComparison.Ordinal)) return false;
+            p.OriginalSource ??= old;
+            if (string.Equals(p.OriginalSource, renamed, StringComparison.OrdinalIgnoreCase)) p.OriginalSource = null;   // revenu à son nom d'origine
+            p.Source = renamed;
+            _nameSuggestions.Remove(p);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Renommage de " + old, ex);
+            if (!quiet) ShowToast("Renommage impossible : " + (ex is IOException && ex.Message.Length < 120 ? ex.Message : "le fichier est peut-être ouvert dans une autre application."));
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Destination d'après le nouveau nom. Un dossier choisi par l'utilisateur est gardé ; sinon l'élément passe dans le
+    /// dossier reconnu, ou dans la file « Sans proposition ». La mise à la Corbeille demandée est gardée.
+    /// </summary>
+    private void Repropose(DocProposal p, List<string> userFolders)
+    {
+        if (p.UserChosen) return;
+        DocProposal fresh = null;
+        try { fresh = DocPlanner.Propose(p.Source, p.IsFolder, p.Origin, userFolders); }
+        catch (Exception ex) { Log.Error("Proposition après renommage " + p.Source, ex); }
+        var from = FolderOf(p);
+        from?.Items.Remove(p);
+        if (from != null && from.Items.Count == 0) _plan.Remove(from);
+        _planManual.Remove(p);
+        p.Keep = false;
+        if (fresh == null || fresh.IsManual)
+        {
+            p.Destination = null;
+            p.DestinationLabel = null;
+            p.DestinationExists = false;
+            p.Reason = null;
+            p.Selected = false;
+            _planManual.Add(p);
+            _planManual.Sort((a, b) => StringComparer.CurrentCultureIgnoreCase.Compare(a.Name, b.Name));
+            return;
+        }
+        MovePlanItem(p, fresh.Destination, fresh.Reason, selected: true);   // renommé par l'utilisateur : il veut le ranger
+    }
+
+    /// <summary>Remet les anciens noms (bouton « Annuler » du message).</summary>
+    private async void UndoRenames(List<(DocProposal p, string old)> items)
+    {
+        int failed = 0;
+        foreach (var (p, old) in items)
+        {
+            if (!File.Exists(p.Source) && !Directory.Exists(p.Source)) { failed++; continue; }   // déjà rangé ou déplacé
+            var oldName = p.IsFolder ? Path.GetFileName(old.TrimEnd('\\')) : Path.GetFileNameWithoutExtension(old);
+            if (!RenameOnDisk(p, oldName, quiet: true)) failed++;
+        }
+        if (DocPlanOverlay.Visibility == Visibility.Visible)
+        {
+            var names = InstalledNames();
+            var userFolders = await Task.Run(() => DocPlanner.UserFolders(names));
+            foreach (var (p, _) in items) Repropose(p, userFolders);
+            bool multi = _showMulti;
+            BuildPlanItems();
+            if (multi) ChecksChanged();
+        }
+        else RefreshDocuments();
+        ShowToast(failed == 0 ? (items.Count == 1 ? "Ancien nom remis." : "Anciens noms remis.")
+                              : $"{Plural(failed, "élément n'a", "éléments n'ont")} pas pu retrouver son nom (déjà rangé : voir l'Historique).");
+    }
+
+
     // ------------------------------------------------------------------ vérification
     private void ShowReviewOverlay()
     {
@@ -1229,6 +1601,13 @@ public partial class MainWindow
     /// <summary>Clavier : Échap ferme la fenêtre du plan (la vérification reste disponible).</summary>
     private bool DocPlanKey(Key key)
     {
+        // Saisie d'un nom en cours : Entrée, Échap et les autres touches vont à la zone de texte
+        if (Keyboard.FocusedElement is TextBox) return false;
+        if (DocPlanSplit.Visibility == Visibility.Visible && key == Key.F2 && DocZoom.Visibility != Visibility.Visible && _planCurrent != null && !_showMulti)
+        {
+            StartRename(_planCurrent);
+            return true;
+        }
         if (DocZoom.Visibility == Visibility.Visible)
         {
             if (key is Key.Up or Key.Down or Key.Left or Key.Right)

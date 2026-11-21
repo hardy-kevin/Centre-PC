@@ -41,9 +41,14 @@ public static class Sandbox
             }
         Settings.Load();
         History.ResetCache();
+        // Listes de prénoms et de noms réduites et connues : les tests ne dépendent pas du fichier de l'Insee
+        PersonNames.UseForTests(TestFirstNames, TestLastNames);
         Directory.CreateDirectory(Desktop);
         Directory.CreateDirectory(Programs);
     }
+
+    public static readonly string[] TestFirstNames = { "Camille", "Léa", "Jean", "Pierre", "Marie", "Kevin", "Max", "Thomas" };
+    public static readonly string[] TestLastNames = { "Martin", "Durand", "Dupont", "Fontaine", "Payne", "Thomas", "Bernard" };
 
     /// <summary>Raccourci Internet (.url) : un simple fichier texte.</summary>
     public static string Url(string dir, string name, string url = "https://example.org")

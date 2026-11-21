@@ -236,6 +236,7 @@ public partial class MainWindow
             .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
         var cat = _editingTheme == null ? null : Settings.Find(_editingTheme);
+        var addedKeywords = keywords.Except(cat?.Keywords ?? new List<string>(), StringComparer.OrdinalIgnoreCase).ToList();
         if (cat == null)
         {
             cat = new Category();
@@ -247,6 +248,9 @@ public partial class MainWindow
         cat.Name = name; cat.Color = _pickedColor; cat.Glyph = _pickedGlyph; cat.Keywords = keywords;
         Settings.Rebuild();
         Settings.Save();
+        // Retour d'expérience (avec l'accord) : seuls les mots qui désignent un logiciel installé
+        if (addedKeywords.Count > 0 && Feedback.Enabled)
+            Feedback.RecordKeywords(name, addedKeywords, AppsInfo(_apps.SelectMany(a => a.IsSuite ? a.Members : new List<AppItem> { a }).Select(a => a.Name)));
         ThemeEditor.Visibility = Visibility.Collapsed;
         await AfterThemesChangedAsync($"Catégorie « {name} » enregistrée");
     }

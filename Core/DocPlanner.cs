@@ -26,6 +26,10 @@ public class DocProposal
     /// <summary>À envoyer à la Corbeille de Windows au moment de valider (rien n'est supprimé avant).</summary>
     public bool Trash { get; set; }
     public string Name => Path.GetFileName(Source.TrimEnd('\\'));
+    /// <summary>Emplacement d'origine, avec l'ancien nom, si l'utilisateur l'a renommé depuis le plan : « Remettre à sa place » le rend tel quel.</summary>
+    public string OriginalSource { get; set; }
+    /// <summary>Dossier choisi par l'utilisateur : un renommage ne le change plus.</summary>
+    public bool UserChosen { get; set; }
 }
 
 /// <summary>Un dossier de l'arborescence proposée, avec ce qu'il recevra.</summary>
@@ -99,7 +103,7 @@ public static class DocPlanner
         new("documents", @"Administratif\Logement", "Bail, quittances, assurance habitation", new[] { "logement", "maison", "appartement", "habitation" },
             Rx(@"\bbail\b|quittance|loyer|[ée]tat des lieux|copropri[ée]t[ée]|syndic|acte de vente|compromis de vente|assurance habitation"), DocExt, "logement"),
         new("documents", @"Administratif\Santé", "Ordonnances, mutuelle, comptes rendus", new[] { "santé", "sante", "médical", "medical" },
-            Rx(@"ordonnance|mutuelle|\bameli\b|carte vitale|compte.rendu (m[ée]dical|d.examen)|vaccin|certificat m[ée]dical|remboursement(s)? (de )?soins|r[ée]sultats? d.analyse"), DocExt, "santé"),
+            Rx(@"ordonnance|mutuelle|\bameli\b|\bcpam\b|assurance maladie|carte vitale|compte.rendu (m[ée]dical|d.examen)|vaccin|certificat m[ée]dical|remboursement(s)? (de )?soins|r[ée]sultats? d.analyse"), DocExt, "santé"),
         new("documents", @"Administratif\Véhicule", "Carte grise, contrôle technique, entretien", new[] { "véhicule", "vehicule", "voiture", "auto", "moto" },
             Rx(@"carte grise|certificat d.immatriculation|contr[ôo]le technique|entretien (voiture|v[ée]hicule)|avis de contravention|certificat de cession|d[ée]claration de cession"), DocExt, "véhicule"),
         new("documents", "Voyages", "Billets, réservations, itinéraires", new[] { "voyages", "vacances", "billets", "travel" },
@@ -108,7 +112,7 @@ public static class DocPlanner
             Rx(@"assurance|sinistre|attestation d.assurance"), DocExt, "assurance"),
         // Études, lecture, créations
         new("documents", "Études et formations", "Cours, diplômes, exercices", new[] { "études", "etudes", "cours", "école", "ecole", "formation", "formations", "fac", "université" },
-            Rx(@"\bcours\b|\btd\s?\d|\btp\s?\d|examen|partiel|dipl[ôo]me|certificat de scolarit|m[ée]moire de|th[èe]se|exercices?\b|homework|syllabus"), DocExt, "études"),
+            Rx(@"\bcours\b|\btd\s?\d|\btp\s?\d|examen|partiel|relev[ée] de notes|bulletin (de notes|scolaire|trimestriel)|dipl[ôo]me|certificat de scolarit|m[ée]moire de|th[èe]se|exercices?\b|homework|syllabus"), DocExt, "études"),
         new("documents", "Livres et BD", "Livres numériques et bandes dessinées", new[] { "livres", "ebooks", "bd", "lectures", "bibliothèque" },
             null, new[] { ".epub", ".mobi", ".azw", ".azw3", ".cbz", ".cbr", ".djvu", ".fb2" }, "livre numérique"),
         new("documents", "Modèles 3D", "Fichiers pour l'impression 3D et la modélisation", new[] { "3d", "impression 3d", "modèles 3d", "stl" },
@@ -235,6 +239,10 @@ public static class DocPlanner
     }
 
     // ------------------------------------------------------------------ dossiers de Centre PC
+    /// <summary>Noms des dossiers du plan et leurs synonymes (« Factures », « Impôts », « screenshots »…) : vocabulaire sans rien de personnel.</summary>
+    public static IEnumerable<string> KnownFolderWords() =>
+        Rules.SelectMany(r => r.Path.Split('\\', StringSplitOptions.RemoveEmptyEntries).Concat(r.Synonyms ?? Array.Empty<string>())).Distinct(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>
     /// Emplacements des dossiers que Centre PC crée lui-même : ceux du plan de rangement (« Documents\Administratif\Factures »,
     /// « Images\Créations IA », « Téléchargements\Programmes d'installation »…) et ceux de l'arborescence de départ.
@@ -616,7 +624,7 @@ public static class DocPlanner
                 {
                     if (!File.Exists(p.Source) && !Directory.Exists(p.Source)) continue;
                     var to = DocumentLibrary.Move(new DocItem { Path = p.Source, IsFolder = p.IsFolder, Origin = p.Origin }, f.Path);
-                    cfg.DocReview.Add(new DocReviewEntry { From = p.Source, To = to, IsFolder = p.IsFolder, Folder = f.Label, Reason = p.Reason });
+                    cfg.DocReview.Add(new DocReviewEntry { From = p.OriginalSource ?? p.Source, To = to, IsFolder = p.IsFolder, Folder = f.Label, Reason = p.Reason });
                     moved++;
                 }
                 catch (Exception ex) { errors.Add($"{p.Name} : {ex.Message}"); Log.Error("Plan de rangement " + p.Source, ex); }

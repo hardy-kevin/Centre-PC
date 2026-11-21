@@ -369,7 +369,7 @@ public class FeedbackTests
         Feedback.SetConsent(true);
         Feedback.RecordError("Test", new InvalidOperationException("x"));
         Feedback.RecordError("Test", new InvalidOperationException("x"));   // même erreur le même jour : une seule fois
-        Feedback.RecordClassification("Outil Exemple", "Utilitaires");
+        Feedback.RecordClassification("Outil Exemple", "Exemple SA", null, true, "Utilitaires", "Autres");
         var queue = Feedback.Queue();
         Assert.Equal(2, queue.Count);
         Assert.Contains(queue, e => e.Type == "erreur" && e.Donnees["type"] == "InvalidOperationException");
@@ -405,7 +405,7 @@ public class FeedbackTests
             // Avec accord mais sans adresse : la file reste sur le PC
             Feedback.Endpoint = "";
             Feedback.SetConsent(true);
-            Feedback.RecordClassification("Outil Exemple", "Utilitaires");
+            Feedback.RecordClassification("Outil Exemple", "Exemple SA", null, true, "Utilitaires", "Autres");
             Assert.False(Feedback.CanSend);
             Assert.Equal(0, await Feedback.SendAsync(DateTime.Now));
             Assert.Single(Feedback.Queue());
