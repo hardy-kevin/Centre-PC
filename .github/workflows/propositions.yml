@@ -37,8 +37,9 @@ jobs:
           $vues = @{ 'classements.json' = 'classements_proposes'; 'motscles.json' = 'mots_cles_proposes'; 'nonreconnues.json' = 'non_reconnues' }
           Push-Location Serveur
           foreach ($f in $vues.Keys) {
-            npx --yes wrangler d1 execute centre-pc-retours --remote --json --command "SELECT * FROM $($vues[$f])" | Out-File "..\retours\$f" -Encoding utf8
-            if ($LASTEXITCODE -ne 0) { throw "Lecture de $($vues[$f]) impossible." }
+            $sortie = npx --yes wrangler d1 execute centre-pc-retours --remote --json --command "SELECT * FROM $($vues[$f])" 2>&1
+            if ($LASTEXITCODE -ne 0) { $sortie | Write-Host; throw "Lecture de $($vues[$f]) impossible." }
+            ($sortie | Where-Object { $_ -is [string] }) -join "`n" | Out-File "..\retours\$f" -Encoding utf8
           }
           Pop-Location
 
