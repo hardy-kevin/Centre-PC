@@ -557,7 +557,20 @@ public static class OnlineClassifier
     {
         if (string.IsNullOrWhiteSpace(url) || !Uri.TryCreate(url.Trim(), UriKind.Absolute, out var uri)
             || (uri.Scheme != "https" && uri.Scheme != "http") || !IsPublicWebHost(uri)) return null;
-        using var resp = await Http.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead);
+        HttpResponseMessage resp = null;
+        for (int hop = 0; ; hop++)
+        {
+            if (!await ResolvesPublicAsync(uri)) return null;
+            resp = await SiteHttp.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead);
+            if ((int)resp.StatusCode is < 300 or > 399) break;
+            // Redirection : suivie au plus 3 fois, et seulement vers un site public en http(s)
+            var next = resp.Headers.Location;
+            resp.Dispose();
+            if (hop >= 3 || next == null) return null;
+            uri = next.IsAbsoluteUri ? next : new Uri(uri, next);
+            if (uri.Scheme != "https" && uri.Scheme != "http") return null;
+        }
+        using var _resp = resp;
         if (!resp.IsSuccessStatusCode || resp.Content.Headers.ContentType?.MediaType?.Contains("html") != true) return null;
         using var stream = await resp.Content.ReadAsStreamAsync();
         var buf = new char[200_000];
@@ -579,13 +592,42 @@ public static class OnlineClassifier
         if (host.Equals("localhost", StringComparison.OrdinalIgnoreCase) || !host.Contains('.')
             || host.EndsWith(".local", StringComparison.OrdinalIgnoreCase) || host.EndsWith(".lan", StringComparison.OrdinalIgnoreCase)
             || host.EndsWith(".home", StringComparison.OrdinalIgnoreCase) || host.EndsWith(".internal", StringComparison.OrdinalIgnoreCase)) return false;
-        if (!System.Net.IPAddress.TryParse(host.Trim('[', ']'), out var ip)) return true;
+        return !System.Net.IPAddress.TryParse(host.Trim('[', ']'), out var ip) || IsPublicAddress(ip);
+    }
+
+    /// <summary>Adresse joignable sur Internet : ni le PC, ni le réseau local, ni une plage réservée.</summary>
+    internal static bool IsPublicAddress(System.Net.IPAddress ip)
+    {
         if (ip.IsIPv4MappedToIPv6) ip = ip.MapToIPv4();
         if (ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6)
-            return !(System.Net.IPAddress.IsLoopback(ip) || ip.IsIPv6LinkLocal || ip.IsIPv6SiteLocal || ip.IsIPv6UniqueLocal);
+            return !(System.Net.IPAddress.IsLoopback(ip) || ip.IsIPv6LinkLocal || ip.IsIPv6SiteLocal || ip.IsIPv6UniqueLocal
+                     || ip.Equals(System.Net.IPAddress.IPv6None) || ip.Equals(System.Net.IPAddress.IPv6Any));
         var b = ip.GetAddressBytes();
         return !(b[0] == 10 || b[0] == 127 || b[0] == 0 || (b[0] == 169 && b[1] == 254) || (b[0] == 172 && b[1] >= 16 && b[1] <= 31)
                  || (b[0] == 192 && b[1] == 168) || (b[0] == 100 && b[1] >= 64 && b[1] <= 127) || b[0] >= 224);
+    }
+
+    /// <summary>Lecture du site d'un éditeur : sans redirection automatique, chaque étape revérifiée (nom et adresses réelles).</summary>
+    private static readonly HttpClient SiteHttp = CreateSiteHttp();
+
+    private static HttpClient CreateSiteHttp()
+    {
+        var h = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromSeconds(12), MaxResponseContentBufferSize = 8 * 1024 * 1024 };
+        h.DefaultRequestHeaders.UserAgent.ParseAdd("CentrePC/1.0 (outil de rangement d'applications Windows)");
+        return h;
+    }
+
+    /// <summary>Le nom du site désigne-t-il vraiment Internet ? (un nom public peut pointer vers une adresse locale)</summary>
+    private static async Task<bool> ResolvesPublicAsync(Uri uri)
+    {
+        if (!IsPublicWebHost(uri)) return false;
+        if (System.Net.IPAddress.TryParse(uri.IdnHost.Trim('[', ']'), out _)) return true;
+        try
+        {
+            var addresses = await System.Net.Dns.GetHostAddressesAsync(uri.IdnHost);
+            return addresses.Length > 0 && addresses.All(IsPublicAddress);
+        }
+        catch { return false; }
     }
 
     /// <summary>Titre, description et mots-clés d'une page web (balises title et meta).</summary>

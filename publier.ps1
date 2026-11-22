@@ -58,4 +58,9 @@ if ($LASTEXITCODE -ne 0) { Stop-WithError "La création de la version a échoué
 Write-Host "`n  C'est envoyé ! GitHub fabrique CentrePC.exe (environ 5 minutes)." -ForegroundColor Green
 Write-Host "  La version apparaîtra ici : $page/releases" -ForegroundColor Green
 Start-Process "$page/actions"
+
+# Signature de l'empreinte avec la clé de l'auteur : sans elle, Centre PC ne propose pas cette version aux utilisateurs
+Write-Host "`n  Signature de la version (gardez cette fenêtre ouverte)..." -ForegroundColor Cyan
+try { & (Join-Path $PSScriptRoot 'Outils\signer-version.ps1') -Version $ver }
+catch { Write-Host "`n  $($_.Exception.Message)" -ForegroundColor Red; Write-Host "  À relancer : .\Outils\signer-version.ps1 -Version $ver" -ForegroundColor Yellow }
 Read-Host "`n  Entrée pour fermer"

@@ -1,3 +1,3 @@
-## Centre PC 1.2.10
+## Centre PC 1.2.11
 
-- Amélioration de la sécurité applicative
+- Amélioration du catalogue

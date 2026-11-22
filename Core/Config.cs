@@ -88,6 +88,8 @@ public class Config
     public bool StartWithWindows { get; set; }
     /// <summary>Démarrage avec Windows déjà proposé (annonce montrée une seule fois aux utilisateurs de l'accès rapide).</summary>
     public bool StartupAsked { get; set; }
+    /// <summary>Invitation à noter ou recommander Centre PC déjà montrée (une seule fois, après une mise à jour réussie).</summary>
+    public bool RecommendShown { get; set; }
     /// <summary>Lecteur d'écran actif : l'élément sous la souris est lu à voix haute (sans clic).</summary>
     public bool HoverSpeech { get; set; } = true;
     /// <summary>Explication du clavier déjà entendue (donnée une seule fois, réécoutable dans Réglages).</summary>

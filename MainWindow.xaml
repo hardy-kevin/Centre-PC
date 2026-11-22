@@ -767,6 +767,22 @@
                                                     </ItemsControl>
                                                 </StackPanel>
                                                 <TextBlock x:Name="ReportDesktop" Visibility="Collapsed" Style="{StaticResource Subtle}" TextWrapping="Wrap" Margin="0,14,0,0"/>
+                                                <!-- Invitation à noter ou recommander : une seule fois, après une mise à jour réussie -->
+                                                <Border x:Name="RecommendBox" Visibility="Collapsed" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0" Padding="0,14,0,0" Margin="0,14,0,0">
+                                                    <StackPanel>
+                                                        <TextBlock Text="Centre PC vous est utile ?" FontWeight="SemiBold"/>
+                                                        <TextBlock x:Name="RecommendText" Style="{StaticResource Subtle}" TextWrapping="Wrap" Margin="0,2,0,10"/>
+                                                        <WrapPanel>
+                                                            <Button x:Name="RecommendRate" Style="{StaticResource AccentButton}" Content="Noter Centre PC" Padding="12,6" Margin="0,0,8,6"
+                                                                    ToolTip="Ouvre la fenêtre de notation du Microsoft Store" Click="RecommendRate_Click"/>
+                                                            <Button Style="{StaticResource BaseButton}" Content="Copier un message à partager" Padding="12,6" Margin="0,0,8,6"
+                                                                    ToolTip="Copie une courte présentation de Centre PC et son lien, à coller dans un e-mail ou une messagerie" Click="RecommendShare_Click"/>
+                                                            <Button Style="{StaticResource BaseButton}" Content="Donner mon avis à l'auteur" Padding="12,6" Margin="0,0,8,6"
+                                                                    ToolTip="Ouvre la page des suggestions du projet sur GitHub (compte GitHub gratuit nécessaire)" Click="RecommendFeedback_Click"/>
+                                                            <Button Style="{StaticResource BaseButton}" Content="Non merci" Padding="12,6" Margin="0,0,0,6" Click="RecommendClose_Click"/>
+                                                        </WrapPanel>
+                                                    </StackPanel>
+                                                </Border>
                                             </StackPanel>
                                         </Border>
 

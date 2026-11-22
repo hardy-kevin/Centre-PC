@@ -627,6 +627,7 @@ public partial class MainWindow
         ReportActionsBox.Visibility = _report.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         ReportDesktop.Text = desktopText ?? "";
         ReportDesktop.Visibility = desktopText == null ? Visibility.Collapsed : Visibility.Visible;
+        ShowRecommend(clean);
         ReportCard.Visibility = Visibility.Visible;
         InstallHeadline.Text = interrupted ? "Mise à jour interrompue" : "Mises à jour terminées";
         InstallCounter.Text = "";
@@ -639,6 +640,49 @@ public partial class MainWindow
         if (InstallHeadline.IsKeyboardFocused) Accessibility.FollowText(ReportTitle, spoken);
         else Accessibility.Announce(ReportCard, spoken, interrupt: false);
         ShowToast(ReportTitle.Text);
+    }
+
+    /// <summary>Invitation à noter ou recommander Centre PC : une seule fois, après la première mise à jour réussie.</summary>
+    private void ShowRecommend(bool clean)
+    {
+        if (!Recommend.ShouldOffer(clean, Settings.Current.RecommendShown))
+        {
+            RecommendBox.Visibility = Visibility.Collapsed;
+            return;
+        }
+        Settings.Current.RecommendShown = true;
+        Settings.Save();
+        bool store = Native.IsPackaged;
+        RecommendRate.Visibility = store ? Visibility.Visible : Visibility.Collapsed;
+        RecommendText.Text = store
+            ? "Une note sur le Microsoft Store aide d'autres personnes à le trouver. Si vous êtes satisfait, parlez-en aussi autour de vous ; s'il manque quelque chose, dites-le à l'auteur."
+            : "Si vous êtes satisfait, parlez-en autour de vous ; s'il manque quelque chose, dites-le à l'auteur.";
+        RecommendBox.Visibility = Visibility.Visible;
+    }
+
+    private async void RecommendRate_Click(object sender, RoutedEventArgs e)
+    {
+        RecommendBox.Visibility = Visibility.Collapsed;
+        if (!await Recommend.RequestStoreRatingAsync(new System.Windows.Interop.WindowInteropHelper(this).Handle))
+            Updates.Open("ms-windows-store://review/?ProductId=" + Recommend.StoreId);
+    }
+
+    private void RecommendShare_Click(object sender, RoutedEventArgs e)
+    {
+        try { Clipboard.SetText(Recommend.ShareText()); ShowToast("Message copié : collez-le dans un e-mail ou une messagerie. Merci !"); }
+        catch { ShowToast("Copie impossible."); }
+    }
+
+    private void RecommendFeedback_Click(object sender, RoutedEventArgs e)
+    {
+        Updates.Open(Recommend.FeedbackUrl);
+        ShowToast("Merci : chaque avis aide à améliorer Centre PC.");
+    }
+
+    private void RecommendClose_Click(object sender, RoutedEventArgs e)
+    {
+        RecommendBox.Visibility = Visibility.Collapsed;
+        InstallButton.Focus();
     }
 
     private void ReportLaunch_Click(object sender, RoutedEventArgs e)

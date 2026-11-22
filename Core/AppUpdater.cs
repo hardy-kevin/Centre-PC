@@ -45,12 +45,16 @@ public class ReleaseInfo
     public string Notes { get; set; }
     public string ExeUrl { get; set; }
     public string ShaUrl { get; set; }
+    /// <summary>Signature de l'empreinte par la clé hors ligne de l'auteur (Catalogue/versions/X.Y.Z.sig), null si absente.</summary>
+    public string Signature { get; set; }
     public string PageUrl { get; set; }
 }
 
 /// <summary>
 /// Mise à jour de Centre PC depuis les « Releases » du dépôt GitHub.
 /// La nouvelle version est téléchargée, son empreinte SHA-256 vérifiée, puis elle remplace l'exe et redémarre.
+/// L'empreinte elle-même doit être signée par la clé de l'auteur (la même que le catalogue, gardée hors de GitHub) :
+/// même si le compte GitHub était piraté, une version fabriquée par quelqu'un d'autre ne serait jamais installée.
 /// </summary>
 public static class AppUpdater
 {
@@ -101,12 +105,27 @@ public static class AppUpdater
                 if (name.Equals("CentrePC.exe", StringComparison.OrdinalIgnoreCase)) r.ExeUrl = url;
                 else if (name.Equals("CentrePC.exe.sha256", StringComparison.OrdinalIgnoreCase)) r.ShaUrl = url;
             }
-            return r.ExeUrl == null ? null : r;
+            if (r.ExeUrl == null || r.ShaUrl == null) return null;
+            // Version pas encore signée par l'auteur (quelques minutes après sa publication) : pas proposée pour l'instant
+            try { r.Signature = (await Http.GetStringAsync(SignatureUrl(r.Version))).Trim(); } catch { return null; }
+            return r;
         }
         catch { return null; }
     }
 
     public static bool IsNewer(ReleaseInfo r) => r != null && r.Version > Current;
+
+    /// <summary>Emplacement de la signature d'une version : déposée dans le dépôt par Outils\signer-version.ps1.</summary>
+    public static string SignatureUrl(Version v) =>
+        $"https://raw.githubusercontent.com/{Owner}/{Repo}/main/Catalogue/versions/{v.Major}.{v.Minor}.{v.Build}.sig";
+
+    /// <summary>Texte signé pour une version : son numéro et l'empreinte de CentrePC.exe (une signature ne vaut que pour eux).</summary>
+    public static byte[] SignedText(Version v, string sha256) =>
+        System.Text.Encoding.UTF8.GetBytes($"CentrePC {v.Major}.{v.Minor}.{v.Build} {sha256.Trim().ToLowerInvariant()}");
+
+    /// <summary>L'empreinte annoncée pour cette version est-elle signée par une clé de l'auteur ?</summary>
+    public static bool VerifyRelease(Version v, string sha256, string signature, IEnumerable<string> keys) =>
+        !string.IsNullOrWhiteSpace(sha256) && !string.IsNullOrWhiteSpace(signature) && RemoteCatalog.Verify(SignedText(v, sha256), signature, keys);
 
     /// <summary>Télécharge, vérifie et installe la nouvelle version, puis la lance. L'application actuelle doit ensuite se fermer.</summary>
     public static async Task InstallAsync(ReleaseInfo r, IProgress<double> progress)
@@ -141,6 +160,11 @@ public static class AppUpdater
         }
         {
             var expected = (await Http.GetStringAsync(r.ShaUrl)).Trim().Split(' ', '\t', '\r', '\n')[0];
+            if (!VerifyRelease(r.Version, expected, r.Signature, RemoteCatalog.PublicKeys))
+            {
+                File.Delete(tmp);
+                throw new InvalidDataException("Cette version n'est pas signée par l'auteur de Centre PC : elle n'est pas installée. Réessayez plus tard.");
+            }
             string actual;
             await using (var fs = File.OpenRead(tmp)) actual = Convert.ToHexString(await SHA256.HashDataAsync(fs));
             if (!actual.Equals(expected, StringComparison.OrdinalIgnoreCase))

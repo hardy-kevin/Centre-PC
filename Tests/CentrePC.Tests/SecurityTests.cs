@@ -1,4 +1,5 @@
 using System.IO;
+using System.Linq;
 using System.Text;
 using CentrePC.Core;
 using Xunit;
@@ -56,4 +57,41 @@ public class SecurityTests
     {
         Assert.Equal(expected, OnlineClassifier.IsPublicWebHost(new Uri(url)));
     }
+
+    [Fact]
+    public void Mise_a_jour_installee_seulement_si_son_empreinte_est_signee()
+    {
+        using var key = System.Security.Cryptography.ECDsa.Create(System.Security.Cryptography.ECCurve.NamedCurves.nistP256);
+        var p = key.ExportParameters(false);
+        var pub = Convert.ToBase64String(p.Q.X.Concat(p.Q.Y).ToArray());
+        var v = new Version(1, 2, 11);
+        var sha = new string('a', 64);
+        var sig = Convert.ToBase64String(key.SignData(AppUpdater.SignedText(v, sha), System.Security.Cryptography.HashAlgorithmName.SHA256));
+        Assert.True(AppUpdater.VerifyRelease(v, sha.ToUpperInvariant(), sig, new[] { pub }));
+        // Signature d'une autre version ou d'un autre fichier : refusée (pas de réutilisation d'une ancienne signature)
+        Assert.False(AppUpdater.VerifyRelease(new Version(1, 2, 12), sha, sig, new[] { pub }));
+        Assert.False(AppUpdater.VerifyRelease(v, new string('b', 64), sig, new[] { pub }));
+        Assert.False(AppUpdater.VerifyRelease(v, sha, null, new[] { pub }));
+        Assert.False(AppUpdater.VerifyRelease(v, sha, sig, RemoteCatalog.PublicKeys));   // clé inconnue
+    }
+
+    [Fact]
+    public void Fichier_venu_d_Internet_reconnu()
+    {
+        Sandbox.Reset();
+        var f = Path.Combine(Sandbox.Root, "facture.docx");
+        File.WriteAllText(f, "x");
+        Assert.False(DocPreview.FromInternet(f));
+        try { File.WriteAllText(f + ":Zone.Identifier", "[ZoneTransfer]\r\nZoneId=3\r\n"); }
+        catch { return; }   // système de fichiers sans flux secondaires : rien à vérifier
+        Assert.True(DocPreview.FromInternet(f));
+    }
+
+    [Theory]
+    [InlineData("8.8.8.8", true)]
+    [InlineData("192.168.0.10", false)]
+    [InlineData("fe80::1", false)]
+    [InlineData("::ffff:10.1.2.3", false)]
+    public void Adresses_publiques(string ip, bool expected) =>
+        Assert.Equal(expected, OnlineClassifier.IsPublicAddress(System.Net.IPAddress.Parse(ip)));
 }

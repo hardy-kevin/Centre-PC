@@ -152,11 +152,29 @@ public static class DocPreview
     {
         try
         {
-            var todo = await Task.Run(() => paths.Where(p => File.Exists(p) && NeedsConversion(p) && CachedPdf(p) == null).ToList());
+            // Fichiers venus d'Internet (marqués par Windows) : jamais ouverts par LibreOffice sans que l'utilisateur le demande
+            var todo = await Task.Run(() => paths.Where(p => File.Exists(p) && NeedsConversion(p) && CachedPdf(p) == null && !FromInternet(p)).ToList());
             if (todo.Count == 0 || LibreOffice() == null) return;
             foreach (var batch in todo.Chunk(4)) await ConvertAsync(batch);
         }
         catch (Exception ex) { Log.Error("Aperçus préparés à l'avance", ex); }
+    }
+
+    /// <summary>
+    /// Fichier téléchargé depuis Internet (marque « Zone.Identifier » posée par Windows et les navigateurs, zone 3 ou 4) :
+    /// son aperçu n'est préparé que si l'utilisateur l'ouvre, pour ne pas faire lire par LibreOffice, en arrière-plan,
+    /// un document piégé.
+    /// </summary>
+    internal static bool FromInternet(string path)
+    {
+        try
+        {
+            var mark = path + ":Zone.Identifier";
+            if (!File.Exists(mark)) return false;
+            var m = System.Text.RegularExpressions.Regex.Match(File.ReadAllText(mark), @"ZoneId\s*=\s*(\d+)");
+            return !m.Success || int.Parse(m.Groups[1].Value) >= 3;
+        }
+        catch { return false; }
     }
 
     private static async Task ConvertAsync(IReadOnlyCollection<string> files)

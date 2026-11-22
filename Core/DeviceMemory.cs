@@ -37,9 +37,19 @@ public static partial class DeviceHealth
         double pct = total > 0 ? used / total : 0;
         usage.Gauges.Add(new DeviceGauge { Label = "Utilisée maintenant", Detail = $"{Gb(used)} sur {Gb(total)} ({pct * 100:0} %)", Fraction = pct,
                                            Level = pct > 0.92 ? DeviceStatus.Warning : DeviceStatus.Ok });
-        double commitPct = st.TotalPageFile > 0 ? 1 - (double)st.AvailPageFile / st.TotalPageFile : 0;
-        usage.Gauges.Add(new DeviceGauge { Label = "Mémoire virtuelle engagée", Detail = $"{commitPct * 100:0} %", Fraction = commitPct,
-                                           Level = commitPct > 0.9 ? DeviceStatus.Warning : DeviceStatus.Ok });
+        // Mémoire virtuelle : comparée à ce que Windows peut atteindre, pas seulement à la taille actuelle du fichier
+        // d'échange. Géré automatiquement, il grandit tout seul (jeux, montage vidéo) : 94 % de sa taille du moment
+        // n'est alors pas un risque. Seuls comptent un fichier d'échange bridé ou un disque plein, et les alertes de Windows.
+        double committed = st.TotalPageFile - st.AvailPageFile;
+        var commit = CommitCapacity(committed, st.TotalPageFile, total, PageFiles(out bool automatic), automatic);
+        double commitPct = commit.Potential > 0 ? committed / commit.Potential : 0;
+        var lowMemory = LowVirtualMemoryEvent();
+        usage.Gauges.Add(new DeviceGauge
+        {
+            Label = "Mémoire virtuelle engagée",
+            Detail = commit.Growth > 0 ? $"{Gb(committed)} sur {Gb(commit.Potential)} possibles ({commitPct * 100:0} %)" : $"{commitPct * 100:0} %",
+            Fraction = commitPct, Level = commit.Problem != null || lowMemory != null ? DeviceStatus.Warning : DeviceStatus.Ok
+        });
         c.Groups.Add(usage);
         if (pct > 0.92)
             c.Issues.Add(new DeviceIssue
@@ -47,11 +57,13 @@ public static partial class DeviceHealth
                 Text = $"La mémoire est presque pleine ({pct * 100:0} %) : le PC ralentit. Fermez les applications ou onglets inutiles.",
                 Actions = { new DeviceAction { Label = "Voir ce qui l'utilise", Glyph = "", Uri = "taskmgr.exe", Primary = true } }
             });
-        if (commitPct > 0.9)
+        if (commit.Problem != null || lowMemory != null)
             c.Issues.Add(new DeviceIssue
             {
-                Text = "La mémoire virtuelle est presque épuisée : des applications peuvent planter. Vérifiez que le fichier d'échange est géré automatiquement par Windows.",
-                Actions = { new DeviceAction { Label = "Mémoire virtuelle", Glyph = "", Uri = "SystemPropertiesPerformance.exe", Tip = "Onglet « Avancé », puis « Modifier »" } }
+                Text = lowMemory != null
+                    ? $"Windows a manqué de mémoire virtuelle le {lowMemory:d MMMM à HH:mm} : des applications ont pu planter. " + (commit.Problem ?? "Fermez les applications inutiles pendant les jeux ou logiciels lourds.")
+                    : commit.Problem,
+                Actions = { new DeviceAction { Label = "Mémoire virtuelle", Glyph = "\uE713", Uri = "SystemPropertiesPerformance.exe", Tip = "Onglet « Avancé », puis « Modifier » : cochez « Gestion automatique du fichier d'échange »" } }
             });
 
         // Barrettes et emplacements
@@ -190,6 +202,77 @@ public static partial class DeviceHealth
             if (m.Success) return (m.Groups[1].Value + m.Groups[2].Value + m.Groups[3].Value).ToUpperInvariant();
         }
         return null;
+    }
+
+    /// <summary>Fichier d'échange : taille actuelle, taille maximale réglée (0 = gérée par Windows), taille et place libre du disque.</summary>
+    public readonly record struct PageFileInfo(double Allocated, double Maximum, double VolumeSize, double Free);
+
+    /// <summary>Ce que la mémoire virtuelle peut encore gagner, et le problème réel s'il y en a un (null : aucun).</summary>
+    public readonly record struct CommitInfo(double Potential, double Growth, string Problem);
+
+    /// <summary>
+    /// Limite de mémoire virtuelle atteignable : la limite actuelle plus ce que le fichier d'échange peut encore grandir.
+    /// Géré par Windows : jusqu'à 3 fois la mémoire vive (4 Go au moins), sans dépasser le huitième du disque ni sa place
+    /// libre (2 Go gardés). Taille fixée : jusqu'au maximum réglé. Un problème n'est signalé qu'au-delà de 90 % de cette
+    /// limite atteignable, avec sa cause (fichier d'échange absent, bridé, disque plein).
+    /// </summary>
+    public static CommitInfo CommitCapacity(double committed, double currentLimit, double ram, IReadOnlyList<PageFileInfo> files, bool automatic)
+    {
+        const double Margin = 2.0 * 1024 * 1024 * 1024;
+        double growth = 0;
+        bool diskBound = false;
+        foreach (var f in files)
+        {
+            double max = automatic || f.Maximum <= 0
+                ? Math.Min(Math.Max(3 * ram, 4.0 * 1024 * 1024 * 1024), f.VolumeSize > 0 ? f.VolumeSize / 8 : double.MaxValue)
+                : f.Maximum;
+            double wanted = Math.Max(0, max - f.Allocated);
+            double room = Math.Max(0, f.Free - Margin);
+            if (room < wanted) diskBound = true;
+            growth += Math.Min(wanted, room);
+        }
+        double potential = currentLimit + growth;
+        if (potential <= 0 || committed / potential <= 0.9) return new CommitInfo(potential, growth, null);
+        string problem = files.Count == 0
+            ? "La mémoire virtuelle est presque épuisée et le fichier d'échange est désactivé : des applications peuvent planter. Laissez Windows le gérer automatiquement."
+            : diskBound
+                ? "La mémoire virtuelle est presque épuisée : le disque du fichier d'échange est presque plein et l'empêche de grandir. Libérez de la place sur ce disque."
+                : !automatic
+                    ? "La mémoire virtuelle est presque épuisée : le fichier d'échange a une taille limitée. Laissez Windows le gérer automatiquement."
+                    : "La mémoire virtuelle est presque épuisée : des applications peuvent planter. Fermez les applications inutiles.";
+        return new CommitInfo(potential, growth, problem);
+    }
+
+    /// <summary>Fichiers d'échange présents, avec leur réglage et le disque qui les porte.</summary>
+    private static List<PageFileInfo> PageFiles(out bool automatic)
+    {
+        automatic = Query("SELECT AutomaticManagedPagefile FROM Win32_ComputerSystem").Select(o => Str(o, "AutomaticManagedPagefile")).FirstOrDefault() == "True";
+        const double Mb = 1024 * 1024;
+        var settings = Query("SELECT Name, MaximumSize FROM Win32_PageFileSetting")
+            .ToDictionary(o => Str(o, "Name") ?? "", o => Num(o, "MaximumSize") * Mb, StringComparer.OrdinalIgnoreCase);
+        var list = new List<PageFileInfo>();
+        foreach (var o in Query("SELECT Name, AllocatedBaseSize FROM Win32_PageFileUsage"))
+        {
+            var name = Str(o, "Name") ?? "";
+            double volume = 0, free = 0;
+            try { var d = new DriveInfo(System.IO.Path.GetPathRoot(name)); if (d.IsReady) { volume = d.TotalSize; free = d.AvailableFreeSpace; } } catch { }
+            list.Add(new PageFileInfo(Num(o, "AllocatedBaseSize") * Mb, settings.TryGetValue(name, out var max) ? max : 0, volume, free));
+        }
+        return list;
+    }
+
+    /// <summary>Dernière alerte « mémoire virtuelle insuffisante » de Windows sur 7 jours (null : aucune).</summary>
+    private static DateTime? LowVirtualMemoryEvent()
+    {
+        try
+        {
+            var q = new EventLogQuery("System", PathType.LogName,
+                "*[System[Provider[@Name='Microsoft-Windows-Resource-Exhaustion-Detector'] and EventID=2004 and TimeCreated[timediff(@SystemTime) <= 604800000]]]") { ReverseDirection = true };
+            using var r = new EventLogReader(q);
+            using var e = r.ReadEvent();
+            return e?.TimeCreated;
+        }
+        catch { return null; }
     }
 
     /// <summary>Erreurs mémoire signalées par le matériel (WHEA) en 30 jours, et résultat du dernier diagnostic (null : aucun).</summary>

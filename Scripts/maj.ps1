@@ -9,6 +9,18 @@ $ErrorActionPreference = 'Continue'
 $opt = if ($ParamsJson) { $ParamsJson | ConvertFrom-Json } else { Get-Content -LiteralPath $Params -Raw -Encoding UTF8 | ConvertFrom-Json }
 $LogPath = $opt.Log
 
+# Ce script tourne en administrateur mais écrit dans les dossiers de l'utilisateur (journal, réglages, raccourcis mis de
+# côté). Si l'un d'eux a été remplacé par un lien (jonction, lien symbolique) vers un autre endroit, un programme sans
+# droits pourrait faire écrire ou déplacer des fichiers ailleurs avec les droits administrateur : on s'arrête (code 97).
+# Les dossiers synchronisés par OneDrive (fichiers « à la demande ») ne sont pas des liens et restent acceptés.
+function Test-Lien([string]$chemin) {
+    if ([string]::IsNullOrWhiteSpace($chemin) -or -not (Test-Path -LiteralPath $chemin)) { return $false }
+    $i = Get-Item -LiteralPath $chemin -Force -ErrorAction SilentlyContinue
+    return $i -and ($i.LinkType -in 'Junction', 'SymbolicLink')
+}
+$aVerifier = @($opt.DataDir, (Split-Path -LiteralPath $opt.DataDir -Parent), (Split-Path -LiteralPath $LogPath -Parent), $opt.ReplacedDir)
+if (@($aVerifier | Where-Object { Test-Lien $_ }).Count -gt 0) { exit 97 }
+
 function Log([string]$m) {
     if ($null -eq $m) { return }
     $m = $m.TrimEnd()
@@ -182,6 +194,9 @@ if ($opt.Apps) {
 
             $arp = Find-Arp $nom
             $dossier = Get-DossierAppli $arp
+            # Dossier d'installation imposé à winget (en administrateur) : seulement s'il vient d'une entrée de la machine
+            # (HKLM), jamais d'une entrée de l'utilisateur (HKCU), modifiable par n'importe quel programme sans droits
+            $dossierImpose = if ($arp -and "$($arp.PSPath)" -match 'HKEY_LOCAL_MACHINE') { $dossier } else { $null }
             $etaitInstalle = Test-Installe $id
             $pret = $null
 
@@ -226,9 +241,9 @@ if ($opt.Apps) {
             }
 
             # L'application exige son dossier d'installation : on lui redonne celui de la version actuelle
-            if ($r.Code -eq $codes.EmplacementRequis -and $dossier) {
-                Log "  Nouvel essai en conservant le dossier actuel : $dossier"
-                $r = Invoke-Winget (@('upgrade', '--id', $id, '--exact', '--include-unknown', '--location', $dossier) + $communs)
+            if ($r.Code -eq $codes.EmplacementRequis -and $dossierImpose) {
+                Log "  Nouvel essai en conservant le dossier actuel : $dossierImpose"
+                $r = Invoke-Winget (@('upgrade', '--id', $id, '--exact', '--include-unknown', '--location', $dossierImpose) + $communs)
             }
             if ($r.Code -in $codes.RedemarrageAFinir, $codes.RedemarrageAvant) { $reboot = $true }
 
@@ -268,7 +283,7 @@ if ($opt.Apps) {
 
         # Icônes ajoutées sur le bureau Public par les installateurs : ramenées sur le bureau de l'utilisateur
         # (Centre PC les range ou retire les doublons ensuite, sans nouvelle demande d'autorisation)
-        if ($opt.TidyPublicShortcuts -and $opt.UserDesktop -and (Test-Path -LiteralPath $opt.UserDesktop)) {
+        if ($opt.TidyPublicShortcuts -and $opt.UserDesktop -and (Test-Path -LiteralPath $opt.UserDesktop) -and -not (Test-Lien $opt.UserDesktop)) {
             # nouvelles icônes + icônes déjà rangées dans Centre PC (doublons laissés par d'anciennes mises à jour)
             $rangees = @(Get-ChildItem -LiteralPath $opt.StoreDir -File -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name)
             foreach ($f in (& $raccourcisPublics | Where-Object { $_ -notin $publicAvant -or (Split-Path $_ -Leaf) -in $rangees })) {
@@ -297,30 +312,56 @@ if ($opt.Apps) {
 
 # ---------------------------------------------------------------- Windows Update
 if ($opt.WindowsUpdate) {
+    # API de Windows Update fournie par Windows (comme pour les pilotes plus bas) : aucun module téléchargé ni code tiers
+    # exécuté avec les droits administrateur. Les mises à jour des autres produits Microsoft (Office…) sont incluses
+    # quand le service Microsoft Update est actif ; un serveur d'entreprise (WSUS) reste respecté sinon.
     Etape 'wu' 'En cours'
     try {
-        if (-not (Get-Module -ListAvailable -Name PSWindowsUpdate)) {
-            Log 'Installation du module PSWindowsUpdate (une seule fois)...'
-            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-            if (-not (Get-PackageProvider -ListAvailable -Name NuGet -ErrorAction SilentlyContinue)) {
-                Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope AllUsers | Out-Null
-            }
-            Install-Module -Name PSWindowsUpdate -Force -Scope AllUsers -AllowClobber -ErrorAction Stop
+        $session = New-Object -ComObject Microsoft.Update.Session
+        $session.ClientApplicationID = 'Centre PC'
+        $mu = '7971f918-a847-4430-9279-4a52d1efe18d'
+        $services = New-Object -ComObject Microsoft.Update.ServiceManager
+        $muActif = { @($services.Services | Where-Object { $_.ServiceID -eq $mu }).Count -gt 0 }
+        if (-not (& $muActif)) {
+            try { [void]$services.AddService2($mu, 7, '') } catch { Log "  Microsoft Update n'a pas pu être activé : $($_.Exception.Message)" }
         }
-        Import-Module PSWindowsUpdate -ErrorAction Stop
-        if (-not (Get-WUServiceManager | Where-Object ServiceID -eq '7971f918-a847-4430-9279-4a52d1efe18d')) {
-            Add-WUServiceManager -MicrosoftUpdate -Confirm:$false | Out-Null
-        }
+        $searcher = $session.CreateUpdateSearcher()
+        if (& $muActif) { $searcher.ServerSelection = 3; $searcher.ServiceID = $mu }
+        Log '> Recherche des mises à jour de Windows…'
         # Système seulement : les pilotes ont leur propre étape (choisis un par un dans Centre PC)
-        $p = @{ MicrosoftUpdate = $true; AcceptAll = $true; IgnoreReboot = $true; UpdateType = 'Software' }
-        $liste = @(Get-WindowsUpdate @p)
-        if ($liste.Count -eq 0) { Etape 'wu' 'OK' 'déjà à jour' }
-        else {
-            $liste | ForEach-Object { Log "  • $($_.Title)" }
-            Install-WindowsUpdate @p -Verbose:$false 2>&1 | ForEach-Object { if ($_.Title) { Log "  $($_.Result) : $($_.Title)" } }
-            Etape 'wu' 'OK' "$($liste.Count) mise(s) à jour"
+        $res = $searcher.Search("IsInstalled=0 and Type='Software' and IsHidden=0")
+        $lot = New-Object -ComObject Microsoft.Update.UpdateColl
+        $ignorees = 0
+        foreach ($u in $res.Updates) {
+            if ($u.InstallationBehavior.CanRequestUserInput) { $ignorees++; Log "  (à installer depuis Windows Update) $($u.Title)"; continue }
+            if (-not $u.EulaAccepted) { $u.AcceptEula() }
+            Log "  • $($u.Title)"
+            [void]$lot.Add($u)
         }
-        if (Get-WURebootStatus -Silent) { $reboot = $true }
+        if ($lot.Count -eq 0) { Etape 'wu' 'OK' $(if ($ignorees) { "$ignorees mise(s) à jour à installer depuis Windows Update" } else { 'déjà à jour' }) }
+        else {
+            $dl = $session.CreateUpdateDownloader(); $dl.Updates = $lot
+            [void]$dl.Download()
+            $prets = New-Object -ComObject Microsoft.Update.UpdateColl
+            foreach ($u in $lot) { if ($u.IsDownloaded) { [void]$prets.Add($u) } }
+            $okW = 0; $echecsW = $lot.Count - $prets.Count
+            if ($echecsW) { Log "  ! $echecsW mise(s) à jour non téléchargée(s)" }
+            if ($prets.Count -gt 0) {
+                $inst = $session.CreateUpdateInstaller(); $inst.Updates = $prets
+                $r = $inst.Install()
+                for ($i = 0; $i -lt $prets.Count; $i++) {
+                    $ur = $r.GetUpdateResult($i)
+                    if ($ur.ResultCode -in 2, 3) { $okW++; Log "  Installée : $($prets.Item($i).Title)" }
+                    else { $echecsW++; Log ("  ! Échec (0x{0:X8}) : {1}" -f $ur.HResult, $prets.Item($i).Title) }
+                }
+                if ($r.RebootRequired) { $reboot = $true }
+            }
+            $resume = @("$okW installée(s)")
+            if ($echecsW) { $resume += "$echecsW échec(s)" }
+            if ($ignorees) { $resume += "$ignorees à installer depuis Windows Update" }
+            Etape 'wu' $(if ($echecsW) { 'PARTIEL' } else { 'OK' }) ($resume -join ', ')
+        }
+        try { if ((New-Object -ComObject Microsoft.Update.SystemInfo).RebootRequired) { $reboot = $true } } catch { }
     } catch {
         Log "Erreur : $($_.Exception.Message)"
         Etape 'wu' 'ERREUR' $_.Exception.Message
