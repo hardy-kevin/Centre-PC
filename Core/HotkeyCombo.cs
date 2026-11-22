@@ -23,7 +23,7 @@ public sealed record HotkeyCombo(int Mods, int Vk)
     {
         switch (s)
         {
-            case null or "": return new(Ctrl | Alt, 0x20);
+            case null or "": return new(Alt, 0x20);   // défaut : Alt + Espace
             case "none" or "None": return None;
             // Anciens identifiants (première version de l'accès rapide)
             case "CtrlAltSpace": return new(Ctrl | Alt, 0x20);

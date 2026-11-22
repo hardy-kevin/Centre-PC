@@ -383,7 +383,7 @@ public partial class MainWindow
     {
         try
         {
-            var p = Process.Start(new ProcessStartInfo("cmd.exe", $"/c chkdsk {letter} /scan & echo. & pause") { UseShellExecute = true, Verb = "runas" });
+            var p = Process.Start(new ProcessStartInfo(Native.SystemTool("cmd.exe"), $"/c chkdsk {letter} /scan & echo. & pause") { UseShellExecute = true, Verb = "runas" });
             ShowToast($"Vérification de {letter} en cours dans la fenêtre ouverte : elle ne modifie rien.");
             if (p != null) await p.WaitForExitAsync();
             await RescanDeviceAsync("storage");

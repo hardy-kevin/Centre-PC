@@ -238,6 +238,8 @@ public static class AppUninstaller
             else { int sp = cmd.IndexOf(' '); exe = sp > 0 ? cmd.Substring(0, sp) : cmd; args = sp > 0 ? cmd.Substring(sp + 1).Trim() : ""; }
         }
         exe = Environment.ExpandEnvironmentVariables(exe);
+        // Nom sans dossier (« MsiExec.exe ») : celui de System32, jamais un homonyme posé à côté de Centre PC
+        if (!Path.IsPathRooted(exe)) exe = Native.SystemTool(exe);
         if (Path.GetFileNameWithoutExtension(exe).Equals("msiexec", StringComparison.OrdinalIgnoreCase))
         {
             var guid = Regex.Match(args, @"\{[0-9A-Fa-f\-]{36}\}").Value;
@@ -352,7 +354,7 @@ public static class AppUninstaller
                 var encoded = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(ps));
                 try
                 {
-                    using var p = Process.Start(new ProcessStartInfo("powershell.exe", "-NoProfile -NonInteractive -WindowStyle Hidden -EncodedCommand " + encoded)
+                    using var p = Process.Start(new ProcessStartInfo(Native.SystemTool("powershell.exe"), "-NoProfile -NonInteractive -WindowStyle Hidden -EncodedCommand " + encoded)
                     { UseShellExecute = true, Verb = "runas", WindowStyle = ProcessWindowStyle.Hidden });
                     await p.WaitForExitAsync(ct);
                     Log.Info($"Retrait de la fonctionnalité {plan.Capability} : code {p.ExitCode}");

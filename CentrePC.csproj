@@ -16,7 +16,7 @@
     <Company>Kevin Hardy</Company>
     <Copyright>© 2026 Kevin Hardy</Copyright>
     <Description>Applications, bureau et mises à jour de Windows en un seul endroit.</Description>
-    <Version>1.2.9</Version>
+    <Version>1.2.10</Version>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>true</SelfContained>
     <PublishSingleFile>true</PublishSingleFile>
@@ -38,6 +38,10 @@
     <EmbeddedResource Include="Scripts\maj.ps1" LogicalName="maj.ps1" />
     <!-- Prénoms et noms de l'Insee (protection des retours d'expérience), fabriqués par Outils\listes-noms.ps1 -->
     <EmbeddedResource Include="Catalogue\noms.gz" LogicalName="noms.gz" Condition="Exists('Catalogue\noms.gz')" />
+    <!-- Conditions (confidentialité et usage professionnel compris) affichées en entier à l'acceptation : les mêmes fichiers que le dépôt -->
+    <EmbeddedResource Include="CONDITIONS.md" LogicalName="CONDITIONS.md" />
+    <EmbeddedResource Include="CONFIDENTIALITE.md" LogicalName="CONFIDENTIALITE.md" />
+    <EmbeddedResource Include="USAGE-PROFESSIONNEL.md" LogicalName="USAGE-PROFESSIONNEL.md" />
     <Resource Include="app.ico" />
   </ItemGroup>
   <Target Name="VerifierListesNoms" BeforeTargets="Build" Condition="!Exists('Catalogue\noms.gz')">

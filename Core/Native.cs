@@ -12,6 +12,20 @@ public static class Native
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
     private static extern int GetCurrentPackageFullName(ref int length, System.Text.StringBuilder name);
 
+    /// <summary>
+    /// Chemin complet d'un outil de Windows (« powershell.exe », « pnputil.exe »…), pris dans System32. Un nom seul serait
+    /// d'abord cherché à côté de Centre PC ou dans le dossier courant, modifiables sans droits : un faux outil déposé là
+    /// serait lancé, voire avec l'autorisation administrateur.
+    /// </summary>
+    public static string SystemTool(string exe)
+    {
+        var sys = Environment.SystemDirectory;
+        var path = exe.Equals("powershell.exe", StringComparison.OrdinalIgnoreCase)
+            ? Path.Combine(sys, @"WindowsPowerShell\v1.0\powershell.exe")
+            : Path.Combine(sys, exe);
+        return File.Exists(path) ? path : exe;
+    }
+
     private static bool? _packaged;
     /// <summary>Vrai quand Centre PC tourne en version Microsoft Store : mises à jour et désinstallation passent par le Store.</summary>
     public static bool IsPackaged

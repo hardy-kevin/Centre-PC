@@ -11,3 +11,6 @@ Serveur/node_modules/
 # Clés privées du catalogue : jamais dans le dépôt, même par erreur (les clés publiques cle-publique*.txt, elles, peuvent y être)
 cle-catalogue*
 cle-secours*
+# Rapport des retours d'expérience (messages d'erreur) : local, jamais publié
+Retours/
+Retours-dernier-lancement.log

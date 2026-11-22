@@ -384,7 +384,7 @@ public static class InputChecks
         try
         {
             var encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes("[Console]::OutputEncoding=[Text.Encoding]::UTF8; " + script));
-            using var p = Process.Start(new ProcessStartInfo("powershell.exe", $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand {encoded}")
+            using var p = Process.Start(new ProcessStartInfo(Native.SystemTool("powershell.exe"), $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand {encoded}")
             {
                 UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true, StandardOutputEncoding = Encoding.UTF8
             });

@@ -143,7 +143,7 @@ public static partial class DeviceHealth
     {
         try
         {
-            var p = Process.Start(new ProcessStartInfo(file, args) { UseShellExecute = true, Verb = "runas", WindowStyle = ProcessWindowStyle.Hidden });
+            var p = Process.Start(new ProcessStartInfo(Native.SystemTool(file), args) { UseShellExecute = true, Verb = "runas", WindowStyle = ProcessWindowStyle.Hidden });
             if (p != null) await p.WaitForExitAsync();
             return p == null || p.ExitCode == 0 ? done : $"L'opération n'a pas abouti (code {p.ExitCode}).";
         }
@@ -165,7 +165,7 @@ public static partial class DeviceHealth
         int exit;
         try
         {
-            var p = Process.Start(new ProcessStartInfo("pnputil.exe", $"/enable-device \"{id}\"") { UseShellExecute = true, Verb = "runas", WindowStyle = ProcessWindowStyle.Hidden });
+            var p = Process.Start(new ProcessStartInfo(Native.SystemTool("pnputil.exe"), $"/enable-device \"{id}\"") { UseShellExecute = true, Verb = "runas", WindowStyle = ProcessWindowStyle.Hidden });
             if (p == null) return "Impossible de lancer l'activation.";
             await p.WaitForExitAsync();
             exit = p.ExitCode;
@@ -561,7 +561,7 @@ public static partial class DeviceHealth
             Run = async () =>
             {
                 var file = Path.Combine(Path.GetTempPath(), "rapport-batterie.html");
-                var p = Process.Start(new ProcessStartInfo("powercfg", $"/batteryreport /output \"{file}\"") { CreateNoWindow = true, UseShellExecute = false });
+                var p = Process.Start(new ProcessStartInfo(Native.SystemTool("powercfg.exe"), $"/batteryreport /output \"{file}\"") { CreateNoWindow = true, UseShellExecute = false });
                 if (p != null) await p.WaitForExitAsync();
                 if (!File.Exists(file)) return "Rapport indisponible sur ce PC.";
                 Process.Start(new ProcessStartInfo(file) { UseShellExecute = true });

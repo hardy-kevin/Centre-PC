@@ -32,13 +32,13 @@ Tout fonctionne hors connexion (applications, bureau, icônes, réglages). Seuls
 
 ## Confidentialité
 
-Centre PC ne collecte aucune donnée personnelle. Pour identifier une appli inconnue, seul son **nom** est envoyé à des catalogues publics ; cette option se désactive dans Réglages. Des retours anonymes (erreurs, catégories corrigées) peuvent être partagés **uniquement si tu l'acceptes** : c'est désactivé par défaut. Détail complet : [CONFIDENTIALITE.md](CONFIDENTIALITE.md).
+Centre PC ne collecte aucune donnée personnelle. Pour identifier une appli inconnue, seul son **nom** est envoyé à des catalogues publics ; cette option se désactive dans Réglages. Des retours anonymes (erreurs, corrections de classement, noms de documents proposés) peuvent être partagés **uniquement si tu l'acceptes** : la question est posée à la première ouverture, rien n'est coché d'avance, et refuser ne retire aucune fonction. Détail complet : [CONFIDENTIALITE.md](CONFIDENTIALITE.md).
 
 Voir aussi : [conditions d'utilisation](CONDITIONS.md) · [usage professionnel](USAGE-PROFESSIONNEL.md).
 
 ## Déployer sur plusieurs postes
 
-Dans **Réglages**, utilise « Exporter la configuration », renomme le fichier `CentrePC.config.json` et place-le à côté de `CentrePC.exe` : il sera appliqué au premier lancement sur chaque poste.
+Dans **Réglages**, utilise « Exporter la configuration », renomme le fichier `CentrePC.config.json` et place-le à côté de `CentrePC.exe` : il sera appliqué au premier lancement sur chaque poste. Chaque utilisateur accepte lui-même les conditions d'utilisation et répond à la question des retours anonymes.
 
 ## Désinstaller
 

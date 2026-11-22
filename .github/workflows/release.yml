@@ -7,7 +7,7 @@ on:
     tags: ['v*']
 
 permissions:
-  contents: write
+  contents: write   # création de la version uniquement ; aucune action tierce n'y a accès
 
 jobs:
   build:
@@ -18,6 +18,11 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
+
+      # Rien n'est publié si un test échoue : une version cassée ne doit jamais arriver chez les utilisateurs
+      # (la mise à jour automatique fait confiance à ce qui est publié ici)
+      - name: Tests automatiques
+        run: dotnet test Tests/CentrePC.Tests/CentrePC.Tests.csproj -c Release --nologo
 
       - name: Compiler CentrePC.exe
         shell: pwsh

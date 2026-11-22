@@ -669,6 +669,6 @@ public partial class MainWindow
     {
         if (MessageBox.Show("Redémarrer le PC maintenant ? Pensez à enregistrer votre travail.", "Centre PC",
                 MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
-            Process.Start(new ProcessStartInfo("shutdown.exe", "/r /t 5") { CreateNoWindow = true, UseShellExecute = false });
+            Process.Start(new ProcessStartInfo(Native.SystemTool("shutdown.exe"), "/r /t 5") { CreateNoWindow = true, UseShellExecute = false });
     }
 }

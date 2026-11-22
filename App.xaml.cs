@@ -11,15 +11,20 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        // Ouverture par un lien « centrepc: » (notification, mais aussi n'importe quelle page web) : seul ce lien est pris en
+        // compte. Une page malveillante qui glisserait d'autres arguments (« --uninstall »…) dans le lien est ignorée.
+        var args = e.Args.Any(a => a.StartsWith(BackgroundCheck.Protocol + ":", StringComparison.OrdinalIgnoreCase))
+            ? e.Args.Where(a => a.StartsWith(BackgroundCheck.Protocol + ":", StringComparison.OrdinalIgnoreCase)).Take(1).ToArray()
+            : e.Args;
         // Garde de la lecture à la souris du Narrateur : attend la fin de Centre PC, même forcée, et remet l'option
-        if (e.Args.Length >= 2 && e.Args[0] == NarratorMouse.GuardArg)
+        if (args.Length >= 2 && args[0] == NarratorMouse.GuardArg)
         {
-            NarratorMouse.RunGuard(e.Args[1]);
+            NarratorMouse.RunGuard(args[1]);
             Shutdown();
             return;
         }
         // Vérification quotidienne (tâche planifiée) : rien à afficher sauf une notification
-        if (e.Args.Contains("--check"))
+        if (args.Contains("--check"))
         {
             // Centre PC déjà ouvert : sa pastille suffit, pas de notification en double
             if (!Mutex.TryOpenExisting(@"Local\CentrePC_Instance", out var running))
@@ -34,10 +39,10 @@ public partial class App : Application
             Shutdown();
             return;
         }
-        OpenUpdatesPage = e.Args.Any(a => a.StartsWith(BackgroundCheck.Protocol + ":", StringComparison.OrdinalIgnoreCase));
+        OpenUpdatesPage = args.Any(a => a.StartsWith(BackgroundCheck.Protocol + ":", StringComparison.OrdinalIgnoreCase));
 
         // Désinstallation (lancée depuis « Applications installées »)
-        if (e.Args.Contains("--uninstall"))
+        if (args.Contains("--uninstall"))
         {
             foreach (var p in System.Diagnostics.Process.GetProcessesByName("CentrePC").Where(p => p.Id != Environment.ProcessId))
                 try { p.Kill(); } catch { }
@@ -47,11 +52,11 @@ public partial class App : Application
         }
 
         // Copie lancée depuis une clé USB, Téléchargements… : propose de s'installer
-        if (!SelfInstall.HandleStartup(e.Args)) { Shutdown(); return; }
+        if (!SelfInstall.HandleStartup(args)) { Shutdown(); return; }
 
         // Une seule instance : si Centre PC est déjà ouvert, on ramène sa fenêtre au premier plan
         bool first;
-        if (e.Args.Contains("--updated"))
+        if (args.Contains("--updated"))
         {
             // Juste après une mise à jour : on attend que l'ancienne version se ferme
             _instance = new Mutex(false, @"Local\CentrePC_Instance");
@@ -93,8 +98,10 @@ public partial class App : Application
         PreviousInstall.RunAtStartup();
         RemoteCatalog.LoadCached();   // copie locale du catalogue signé, revérifiée à chaque lancement
         var main = new MainWindow();
-        // Ouverture de session : Centre PC démarre discrètement, seulement l'icône près de l'horloge
-        if (e.Args.Contains("--tray") && Settings.Current.QuickAccess) main.StartInBackground();
+        // Ouverture de session (clé « Run » avec --tray, ou tâche de démarrage de la version Store) : Centre PC démarre
+        // discrètement, seulement l'icône près de l'horloge. Conditions d'utilisation à accepter : la fenêtre s'ouvre.
+        bool atLogon = args.Contains("--tray") || PackagedStartup.LaunchedAtLogon();
+        if (atLogon && Settings.Current.QuickAccess && !Terms.NeedsAcceptance(Settings.Current)) main.StartInBackground();
         else main.Show();
     }
 

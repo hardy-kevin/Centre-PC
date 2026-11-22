@@ -588,7 +588,7 @@ public static class IconStyler
         try
         {
             // Outil de Windows qui rafraîchit le cache d'icônes sans rien supprimer
-            try { Process.Start(new ProcessStartInfo("ie4uinit.exe", "-show") { UseShellExecute = false, CreateNoWindow = true })?.WaitForExit(5000); } catch { }
+            try { Process.Start(new ProcessStartInfo(Native.SystemTool("ie4uinit.exe"), "-show") { UseShellExecute = false, CreateNoWindow = true })?.WaitForExit(5000); } catch { }
             foreach (var p in Process.GetProcessesByName("explorer")) { try { p.Kill(); } catch { } }
             var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
             var dir = System.IO.Path.Combine(local, @"Microsoft\Windows\Explorer");

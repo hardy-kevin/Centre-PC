@@ -364,9 +364,14 @@ public partial class MainWindow
                 return;
             }
         }
+        if (TermsViewerOverlay.Visibility == Visibility.Visible)
+        {
+            if (e.Key == Key.Escape) { TermsViewerClose_Click(this, null); e.Handled = true; }
+            return;
+        }
         if (WelcomeOverlay.Visibility == Visibility.Visible)
         {
-            if (e.Key is Key.Enter or Key.Escape) { Welcome_Click(this, null); e.Handled = true; }
+            WelcomeKeyDown(e);
             return;
         }
         if (AppUpdateOverlay.Visibility == Visibility.Visible)

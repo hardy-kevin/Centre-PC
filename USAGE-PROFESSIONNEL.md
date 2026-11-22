@@ -1,6 +1,6 @@
 # Utiliser Centre PC dans une activité professionnelle
 
-*Version du 15 novembre 2026. Ce document informe ; il ne remplace pas un conseil juridique.*
+*Version du 22 novembre 2026. Ce document informe ; il ne remplace pas un conseil juridique.*
 
 **Centre PC lui-même est gratuit pour tous, y compris les professionnels** (licence GNU GPL version 3) : dépannage, montage de PC, atelier, entreprise. Aucune redevance, aucune inscription.
 
@@ -25,6 +25,7 @@ Sans HWiNFO ni LibreHardwareMonitor, les tests fonctionnent quand même : carte 
 - **Sauvegarde** : vérifiez qu'elle existe avant toute intervention.
 - **Rapport** : il contient le nom du PC, tous les logiciels installés et les correctifs de Windows. C'est une donnée du client : transmettez-le seulement à lui, ou avec son accord. Supprimez de votre matériel les rapports dont vous n'avez plus besoin.
 - **Données personnelles (RGPD)** : si vous conservez des rapports nominatifs, vous êtes responsable de ce traitement (information du client, durée de conservation, sécurité).
+- **Conditions et retours anonymes** : à la première ouverture, Centre PC demande d'accepter ses conditions et de répondre à la question des retours anonymes. Sur le PC d'un client, laissez-le répondre lui-même, ou refusez les retours en son nom faute d'accord explicite.
 - **Outils temporaires** : Centre PC désinstalle ce qu'il a installé. Vérifiez-le en fin d'intervention (Paramètres › Applications).
 
 ## 3. Votre responsabilité de professionnel

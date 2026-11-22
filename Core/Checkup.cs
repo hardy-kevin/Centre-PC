@@ -268,7 +268,7 @@ public static class SystemInventory
         try
         {
             Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);   // sortie de powercfg dans la page de code de la console (accents)
-            var p = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("powercfg", "/getactivescheme")
+            var p = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(CentrePC.Core.Native.SystemTool("powercfg.exe"), "/getactivescheme")
             { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, StandardOutputEncoding = Encoding.GetEncoding(CultureInfo.CurrentCulture.TextInfo.OEMCodePage) });
             var o = p.StandardOutput.ReadToEnd();
             p.WaitForExit(5000);

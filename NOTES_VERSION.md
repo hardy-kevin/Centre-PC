@@ -1,3 +1,3 @@
-## Centre PC 1.2.9
+## Centre PC 1.2.10
 
-- Amélioration des remontées utilisateur
+- Amélioration de la sécurité applicative

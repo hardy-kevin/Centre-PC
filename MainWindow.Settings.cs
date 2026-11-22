@@ -54,6 +54,9 @@ public partial class MainWindow
             Detail = $"{c.Keywords?.Count ?? 0} mots-clés · {_apps.Count(a => a.Theme == c.Name)} applications"
         }).ToList();
         AppVersionText.Text = $"Version {AppUpdater.Current}" + (Native.IsPackaged ? " · Microsoft Store" : "");
+        TermsStatusText.Text = Settings.Current.TermsAcceptedOn is DateTime accepted
+            ? $"Conditions d'utilisation du {DateTime.ParseExact(Terms.Version, "yyyy-MM-dd", null):d MMMM yyyy} acceptées le {accepted:d MMMM yyyy}."
+            : "";
         if (Native.IsPackaged)
         {
             AppUpdateStatus.Text = "Les mises à jour sont installées automatiquement par le Microsoft Store.";
@@ -74,7 +77,7 @@ public partial class MainWindow
         DailyCheckBox.IsEnabled = TestNotifButton.IsEnabled = canSchedule;
         DailyCheckBox.ToolTip = canSchedule ? null : "Disponible dans la version installée de Centre PC";
         InitQuickAccessSettings();
-        AboutText.Text = $"© 2026 Kevin Hardy · Licence PolyForm Noncommercial 1.0.0 · réglages enregistrés dans {Settings.DataDir}";
+        AboutText.Text = $"© 2026 Kevin Hardy · licence libre GNU GPL version 3 · réglages enregistrés dans {Settings.DataDir}";
     }
 
     private bool _settingsInit;
@@ -455,7 +458,6 @@ public partial class MainWindow
     private void OpenRepo_Click(object sender, RoutedEventArgs e) => Updates.Open(AppUpdater.RepoUrl);
 
     // Textes de référence, publiés avec le code source (toujours à jour, lisibles sans Centre PC)
-    private static string DocUrl(string file) => AppUpdater.RepoUrl.Replace("/releases", "/blob/HEAD/" + file);
     // ------------------------------------------------------------------ retours d'expérience
     private void RefreshFeedbackUi()
     {
@@ -515,9 +517,10 @@ public partial class MainWindow
         ShowToast(n == 0 ? "Aucune information n'était masquée." : "Les informations masquées sont de nouveau visibles dans Périphériques.");
     }
 
-    private void Terms_Click(object sender, RoutedEventArgs e) => Updates.Open(DocUrl("CONDITIONS.md"));
-    private void Privacy_Click(object sender, RoutedEventArgs e) => Updates.Open(DocUrl("CONFIDENTIALITE.md"));
-    private void ProNotice_Click(object sender, RoutedEventArgs e) => Updates.Open(DocUrl("USAGE-PROFESSIONNEL.md"));
+    // Conditions, confidentialité, usage professionnel : lus dans l'appli (un seul document), jamais sur GitHub
+    private void Terms_Click(object sender, RoutedEventArgs e) => OpenTermsViewer("conditions");
+    private void Privacy_Click(object sender, RoutedEventArgs e) => OpenTermsViewer("confidentialite");
+    private void ProNotice_Click(object sender, RoutedEventArgs e) => OpenTermsViewer("pro");
     private void Footer_Click(object sender, MouseButtonEventArgs e) => NavSettings.IsChecked = true;
 
     private void OpenDataDir_Click(object sender, RoutedEventArgs e) => Updates.Open(Settings.DataDir);

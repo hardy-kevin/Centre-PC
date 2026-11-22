@@ -1,15 +1,16 @@
 # Confidentialité
 
-*Version du 21 novembre 2026 (retours sur les modifications, emplacement des données).*
+*Version du 22 novembre 2026 (choix des retours à la première ouverture, listes de noms, catalogue enrichi, démarrage avec Windows).*
 
-**Centre PC ne collecte aucune donnée personnelle.** Vos réglages, l'historique, les journaux et les rapports restent sur votre PC. Des retours anonymes peuvent être partagés **uniquement si vous l'acceptez** (voir plus bas) ; c'est désactivé par défaut.
+**Centre PC ne collecte aucune donnée personnelle.** Vos réglages, l'historique, les journaux et les rapports restent sur votre PC. Des retours anonymes peuvent être partagés **uniquement si vous l'acceptez** (voir plus bas) : la question est posée à la première ouverture, rien n'est coché d'avance, et refuser ne retire aucune fonction.
 
 ## Ce qui sort de votre PC, et pourquoi
 
 | Quand | Vers qui | Quoi | Comment le désactiver |
 |---|---|---|---|
-| Classement des applications non reconnues | Catalogues publics : winget, Flathub, Steam, Google Play, Wikidata, GitHub | **Uniquement le nom de l'application** recherchée | Réglages › Tri automatique › décocher « Identifier automatiquement en ligne » |
-| Corrections de classement (catalogue signé) | GitHub | Aucune donnée (simple lecture d'un fichier public, une fois par jour au plus) | Réglages › Tri automatique › décocher « Recevoir les corrections de classement » |
+| Classement des applications non reconnues | Catalogues publics : winget, Flathub, Steam, Google Play, Wikidata, GitHub | **Uniquement le nom de l'application** recherchée (recherche refaite au plus tous les 30 jours si rien n'a été trouvé, tous les 180 jours sinon, 25 applications au plus à la fois) | Réglages › Tri automatique › décocher « Identifier automatiquement en ligne » |
+| Corrections de classement (catalogue signé : catégories, mots-clés, organismes reconnus dans les documents, éditeurs connus) | GitHub | Aucune donnée (simple lecture d'un fichier public, une fois par jour au plus) | Réglages › Tri automatique › décocher « Recevoir les corrections de classement » |
+| Listes de prénoms et de noms (Insee), qui empêchent l'envoi d'un nom de personne dans les retours | GitHub | Aucune donnée (simple lecture d'un fichier public signé, une fois par mois au plus) | Inutile : la liste intégrée à Centre PC suffit ; sans liste valide, aucun nom d'application, d'éditeur ni de mot-clé n'est envoyé |
 | Recherche d'une nouvelle version de Centre PC | GitHub | Aucune donnée (simple lecture de la page des versions) | Réglages › Version › décocher « Vérifier automatiquement au démarrage » |
 | Mises à jour | Windows Update, winget, éditeurs des logiciels | Ce que ces services demandent pour fournir une mise à jour | Ne pas lancer de recherche de mises à jour ; désactiver la vérification quotidienne dans Réglages |
 | Vérification de la connexion | Microsoft (adresse de test de Windows) | Aucune donnée | — |
@@ -22,6 +23,8 @@ Comme pour tout accès à Internet, ces services voient votre adresse IP.
 ## Ce qui reste sur votre PC
 
 - Réglages, journal et icônes rangées : `Documents\Centre PC\<nom du PC>` (un dossier par PC). Cache jetable : `%LOCALAPPDATA%\CentrePC\Cache`.
+- Acceptation des conditions d'utilisation (version et date) et vos choix de la première ouverture : dans `config.json`, sur votre PC seulement.
+- Démarrage avec Windows, si vous l'avez choisi : une entrée « Centre PC » dans les applications de démarrage de Windows (clé « Run » de votre session, ou tâche de démarrage pour la version Microsoft Store), retirée si vous décochez l'option.
 - Lecture des documents pour proposer un nom (plan de rangement) : le texte est lu sur votre PC par la reconnaissance de texte de Windows ; il n'est ni enregistré ni envoyé.
 - Rapports de bilan et instantanés : `Documents\Centre PC\Bilans`. Ils contiennent le nom du PC, le matériel, la liste des logiciels et des mises à jour installés : **relisez-les avant de les transmettre**.
 - Captures d'écran : `Images\Captures d'écran` et presse-papiers.
@@ -30,7 +33,7 @@ La désinstallation de Centre PC ne supprime ni vos documents, ni vos rapports, 
 
 ## Retours d'expérience (facultatifs)
 
-Dans Réglages › « Aider à améliorer Centre PC », vous pouvez accepter de partager des retours anonymes. **C'est désactivé par défaut, et refuser ne retire aucune fonction.**
+À la première ouverture (ou quand les conditions d'utilisation changent), Centre PC vous demande si vous acceptez de partager des retours anonymes : vous répondez « Oui » ou « Non merci », **rien n'est choisi d'avance, et refuser ne retire aucune fonction.** Le choix se change à tout moment dans Réglages › « Aider à améliorer Centre PC ».
 
 Ce qui est enregistré, seulement après votre accord :
 
@@ -50,13 +53,14 @@ Ce qui est enregistré, seulement après votre accord :
 
 Chaque retour porte aussi le jour (sans l'heure), la version de Centre PC et celle de Windows.
 
-Ce qui n'est jamais enregistré : nom ou contenu de vos fichiers, nom d'un dossier, d'une catégorie ou d'un groupe que vous avez inventé, dossiers personnels, nom d'utilisateur, nom du PC, adresses e-mail. Dans le doute, rien n'est enregistré. Les chemins de fichiers sont retirés avant tout enregistrement ; seuls ceux de Windows et des programmes installés sont gardés.
+Ce qui n'est jamais enregistré : un prénom suivi ou précédé d'un nom de famille (vérifié avec les listes de l'Insee : un nom d'application, d'éditeur ou un mot-clé qui en contient un n'est pas envoyé, et dans un message d'erreur la paire devient « %NOM% » ; le service de réception refait la même vérification), nom ou contenu de vos fichiers, nom d'un dossier, d'une catégorie ou d'un groupe que vous avez inventé, dossiers personnels, nom d'utilisateur, nom du PC, adresses e-mail. Dans le doute, rien n'est enregistré. Les chemins de fichiers sont retirés avant tout enregistrement ; seuls ceux de Windows et des programmes installés sont gardés.
 
 - **Vous voyez tout** : « Voir ce qui serait envoyé » ouvre la file d'attente (`retours.json` dans `Documents\Centre PC\<nom du PC>`), telle qu'elle partirait.
-- **Vous effacez tout** : « Tout effacer », ou décochez la case (la file et l'identifiant sont supprimés).
-- **Envoi** : une fois par jour au plus, si vous avez coché la case, vers un service de l'auteur hébergé chez Cloudflare (`centre-pc-retours.centre-pc.workers.dev`). Ce service ne conserve pas l'adresse IP, n'accepte que les champs décrits ci-dessus et supprime les données après 90 jours. Son code est public (dossier `Serveur` du dépôt). Une fois envoyés, les retours sont retirés de la file.
+- **Vous effacez tout** : « Tout effacer », ou décochez la case dans Réglages (la file et l'identifiant sont supprimés).
+- **Ce qui est fait des retours** : seuls des totaux sur au moins 3 installations différentes servent à améliorer le classement et les noms proposés ; ces totaux (noms de logiciels, catégories, mots-clés) peuvent être publiés dans le catalogue public du dépôt GitHub. Les messages d'erreur ne sont jamais publiés. Aucun retour n'est vendu ni transmis à un autre tiers que l'hébergeur.
+- **Envoi** : une fois par jour au plus, si vous avez accepté, par une connexion chiffrée (HTTPS) vers un service de l'auteur hébergé chez Cloudflare (`centre-pc-retours.centre-pc.workers.dev`). Ce service ne conserve pas l'adresse IP, n'accepte que les champs décrits ci-dessus et supprime les données après 90 jours. Son code est public (dossier `Serveur` du dépôt). Une fois envoyés, les retours sont retirés de la file.
 - **Identifiant** : un identifiant aléatoire, sans lien avec vous ni avec votre PC, renouvelé chaque mois, sert seulement à éviter les doublons et à effacer vos retours si vous le demandez.
 
 ## Vos droits et contact
 
-Si vous n'avez pas coché « Partager des retours anonymes », aucune donnée vous concernant n'est détenue par l'auteur. Si vous l'avez fait et souhaitez l'effacement de vos retours, indiquez l'identifiant `FeedbackInstallId` du fichier `config.json` (dans `Documents\Centre PC\<nom du PC>`) : tout ce qui lui est associé sera supprimé. Question : page « Issues » du dépôt GitHub du projet.
+Si vous n'avez pas accepté les retours anonymes, aucune donnée vous concernant n'est détenue par l'auteur. Si vous l'avez fait et souhaitez l'effacement de vos retours, indiquez l'identifiant `FeedbackInstallId` du fichier `config.json` (dans `Documents\Centre PC\<nom du PC>`) : tout ce qui lui est associé sera supprimé. Question : page « Issues » du dépôt GitHub du projet.

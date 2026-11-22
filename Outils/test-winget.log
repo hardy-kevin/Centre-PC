@@ -1,0 +1,9 @@
+﻿=== test 11/22/2026 09:50:35
+InstallLocation: C:\Program Files\WindowsApps\Microsoft.DesktopAppInstaller_1.29.380.0_x64__8wekyb3d8bbwe
+Existe: True
+Alias PATH: C:\Users\Kévin\AppData\Local\Microsoft\WindowsApps\winget.exe
+Direct: code 0 : v1.29.380
+Via PATH machine: C:\Program Files\WindowsApps\Microsoft.DesktopAppInstaller_1.29.380.0_x64__8wekyb3d8bbwe\winget.exe
+Via PATH: code 0 : v1.29.380
+List: code 0 : Nom                                    ID                     Version    Source / -------------------------------------------------------------------------------- / Programme d'installation d'application Microsoft.AppInstaller 1.29.380.0 winget
+Modules machine: C:\Program Files\WindowsPowerShell\Modules ; PSModulePath actuel: C:\Users\Kévin\Documents\WindowsPowerShell\Modules;C:\Program Files\WindowsPowerShell\Modules;C:\WINDOWS\system32\WindowsPowerShell\v1.0\Modules

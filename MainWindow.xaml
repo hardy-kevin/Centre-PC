@@ -1272,6 +1272,7 @@
                                         <Button Style="{StaticResource BaseButton}" Content="Usage professionnel" Click="ProNotice_Click"
                                                 ToolTip="Ce qu'un professionnel doit avoir en règle pour utiliser Centre PC dans son activité"/>
                                     </WrapPanel>
+                                    <TextBlock x:Name="TermsStatusText" Style="{StaticResource Subtle}" FontSize="12" Margin="0,8,0,0" TextWrapping="Wrap"/>
                                 </StackPanel>
                             </Border>
 
@@ -1699,50 +1700,192 @@
             </Grid>
         </Border>
 
-        <!-- Présentation (premier lancement) -->
+        <!-- Accueil : présentation et conditions (premier lancement ou conditions modifiées), puis réglages recommandés -->
         <Grid x:Name="WelcomeOverlay" Visibility="Collapsed" Background="#E6090910">
             <Border Width="900" VerticalAlignment="Center" HorizontalAlignment="Center" Background="{StaticResource Surface}"
                     BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="20" Padding="40,34">
                 <Border.Effect><DropShadowEffect BlurRadius="40" ShadowDepth="6" Opacity="0.5"/></Border.Effect>
-                <StackPanel>
-                    <Border Width="56" Height="56" CornerRadius="16" Background="{StaticResource AccentGradient}" HorizontalAlignment="Left">
-                        <Image Source="app.ico" Width="34" Height="34"/>
-                    </Border>
-                    <TextBlock Text="Bienvenue dans Centre PC" FontFamily="{StaticResource DisplayFont}" FontSize="28" FontWeight="SemiBold" Margin="0,18,0,4"/>
-                    <TextBlock Text="Trois choses à savoir :" Style="{StaticResource Subtle}" FontSize="14"/>
-                    <UniformGrid Columns="3" Margin="-8,24,-8,0">
-                        <Border Style="{StaticResource Card}" Margin="8">
-                            <StackPanel>
-                                <TextBlock Text="&#xE71D;" Style="{StaticResource Glyph}" FontSize="24" HorizontalAlignment="Left" Foreground="#8B7CFF"/>
-                                <TextBlock Text="1. Vos applications" FontWeight="SemiBold" FontSize="15" Margin="0,12,0,6"/>
-                                <TextBlock TextWrapping="Wrap" Style="{StaticResource Subtle}" Text="Elles sont classées automatiquement par catégorie. Saisissez un nom pour lancer une application."/>
-                            </StackPanel>
+                <Grid>
+                    <!-- Étape 1 : présentation -->
+                    <StackPanel x:Name="WelcomeIntroPanel">
+                        <Border Width="56" Height="56" CornerRadius="16" Background="{StaticResource AccentGradient}" HorizontalAlignment="Left">
+                            <Image Source="app.ico" Width="34" Height="34"/>
                         </Border>
-                        <Border Style="{StaticResource Card}" Margin="8">
-                            <StackPanel>
-                                <TextBlock Text="&#xE7F4;" Style="{StaticResource Glyph}" FontSize="24" HorizontalAlignment="Left" Foreground="#3B82F6"/>
-                                <TextBlock Text="2. Votre bureau" FontWeight="SemiBold" FontSize="15" Margin="0,12,0,6"/>
-                                <TextBlock TextWrapping="Wrap" Style="{StaticResource Subtle}" Text="« Ranger le bureau » le libère en un clic. Tout peut être remis à tout moment."/>
-                            </StackPanel>
+                        <TextBlock x:Name="WelcomeTitle" Text="Bienvenue dans Centre PC" FontFamily="{StaticResource DisplayFont}" FontSize="28" FontWeight="SemiBold" Margin="0,18,0,4"/>
+                        <TextBlock x:Name="WelcomeSubtitle" Text="Votre PC Windows, en un seul endroit. Gratuit et libre." Style="{StaticResource Subtle}" FontSize="14" TextWrapping="Wrap"/>
+                        <UniformGrid x:Name="WelcomeCards" Columns="3" Margin="-6,22,-6,0">
+                            <Border Style="{StaticResource Card}" Margin="6">
+                                <StackPanel>
+                                    <TextBlock Text="&#xE71D;" Style="{StaticResource Glyph}" FontSize="22" HorizontalAlignment="Left" Foreground="#8B7CFF"/>
+                                    <TextBlock Text="Vos applications" FontWeight="SemiBold" FontSize="15" Margin="0,10,0,4"/>
+                                    <TextBlock TextWrapping="Wrap" Style="{StaticResource Subtle}" FontSize="13" Text="Classées par thème automatiquement. Tapez un nom pour lancer une application, ou utilisez le lanceur au clavier."/>
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource Card}" Margin="6">
+                                <StackPanel>
+                                    <TextBlock Text="&#xE7F4;" Style="{StaticResource Glyph}" FontSize="22" HorizontalAlignment="Left" Foreground="#3B82F6"/>
+                                    <TextBlock Text="Votre bureau" FontWeight="SemiBold" FontSize="15" Margin="0,10,0,4"/>
+                                    <TextBlock TextWrapping="Wrap" Style="{StaticResource Subtle}" FontSize="13" Text="Rangé en un clic, sans rien supprimer. Tout se remet comme avant à tout moment."/>
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource Card}" Margin="6">
+                                <StackPanel>
+                                    <TextBlock Text="&#xE8B7;" Style="{StaticResource Glyph}" FontSize="22" HorizontalAlignment="Left" Foreground="#F59E0B"/>
+                                    <TextBlock Text="Vos documents" FontWeight="SemiBold" FontSize="15" Margin="0,10,0,4"/>
+                                    <TextBlock TextWrapping="Wrap" Style="{StaticResource Subtle}" FontSize="13" Text="Un plan de rangement pour Documents, Images, Musique et Vidéos, avec des noms de fichiers proposés."/>
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource Card}" Margin="6">
+                                <StackPanel>
+                                    <TextBlock Text="&#xE895;" Style="{StaticResource Glyph}" FontSize="22" HorizontalAlignment="Left" Foreground="#10B981"/>
+                                    <TextBlock Text="Les mises à jour" FontWeight="SemiBold" FontSize="15" Margin="0,10,0,4"/>
+                                    <TextBlock TextWrapping="Wrap" Style="{StaticResource Subtle}" FontSize="13" Text="Applications, Windows et pilotes vérifiés pour vous, puis installés en un clic."/>
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource Card}" Margin="6">
+                                <StackPanel>
+                                    <TextBlock Text="&#xE772;" Style="{StaticResource Glyph}" FontSize="22" HorizontalAlignment="Left" Foreground="#EC4899"/>
+                                    <TextBlock Text="Vos périphériques" FontWeight="SemiBold" FontSize="15" Margin="0,10,0,4"/>
+                                    <TextBlock TextWrapping="Wrap" Style="{StaticResource Subtle}" FontSize="13" Text="Clavier, souris, son, écrans et disques contrôlés en direct, avec des corrections réversibles."/>
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource Card}" Margin="6">
+                                <StackPanel>
+                                    <TextBlock Text="&#xE9D9;" Style="{StaticResource Glyph}" FontSize="22" HorizontalAlignment="Left" Foreground="#06B6D4"/>
+                                    <TextBlock Text="Le bilan du PC" FontWeight="SemiBold" FontSize="15" Margin="0,10,0,4"/>
+                                    <TextBlock TextWrapping="Wrap" Style="{StaticResource Subtle}" FontSize="13" Text="Santé, performances et températures, avec un rapport à garder ou à transmettre."/>
+                                </StackPanel>
+                            </Border>
+                        </UniformGrid>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,24,0,0">
+                            <Button x:Name="WelcomeNextButton" Style="{StaticResource AccentButton}" Content="Continuer" Padding="28,12" Click="WelcomeNext_Click"/>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- Étape 2 : conditions d'utilisation et confidentialité, en entier, à faire défiler jusqu'en bas -->
+                    <Grid x:Name="WelcomeTermsPanel" Visibility="Collapsed">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <StackPanel>
+                            <TextBlock x:Name="TermsTitle" Text="Conditions d'utilisation" FontFamily="{StaticResource DisplayFont}" FontSize="26" FontWeight="SemiBold"/>
+                            <TextBlock x:Name="TermsSubtitle" Style="{StaticResource Subtle}" FontSize="14" TextWrapping="Wrap" Margin="0,4,0,0"
+                                       Text="Lisez-les jusqu'en bas pour pouvoir les accepter. La confidentialité en fait partie (section 6)."/>
+                        </StackPanel>
+                        <!-- Conditions modifiées : ce qui change -->
+                        <StackPanel x:Name="WelcomeChanges" Grid.Row="1" Visibility="Collapsed" Margin="0,16,0,0"/>
+                        <Border Grid.Row="2" Background="{StaticResource Surface2}" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="12" Margin="0,16,0,0">
+                            <ScrollViewer x:Name="TermsScroll" MaxHeight="430" VerticalScrollBarVisibility="Auto" Focusable="True" Padding="22,16,14,16"
+                                          ScrollChanged="TermsScroll_ScrollChanged" AutomationProperties.Name="Texte des conditions d'utilisation et de la confidentialité">
+                                <StackPanel x:Name="TermsDoc" Margin="0,0,8,0"/>
+                            </ScrollViewer>
                         </Border>
-                        <Border Style="{StaticResource Card}" Margin="8">
-                            <StackPanel>
-                                <TextBlock Text="&#xE895;" Style="{StaticResource Glyph}" FontSize="24" HorizontalAlignment="Left" Foreground="#10B981"/>
-                                <TextBlock Text="3. Les mises à jour" FontWeight="SemiBold" FontSize="15" Margin="0,12,0,6"/>
-                                <TextBlock TextWrapping="Wrap" Style="{StaticResource Subtle}" Text="Centre PC les vérifie pour vous. Une pastille les signale, puis elles s'installent en un clic."/>
+                        <Grid Grid.Row="3" Margin="0,18,0,0">
+                            <TextBlock x:Name="TermsHint" Style="{StaticResource Subtle}" FontSize="12.5" VerticalAlignment="Center" TextWrapping="Wrap" Margin="0,0,380,0"
+                                       Text="Faites défiler le texte jusqu'en bas pour pouvoir accepter."/>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                <Button x:Name="WelcomeDeclineButton" Style="{StaticResource BaseButton}" Content="Refuser et quitter" Padding="20,12" Margin="0,0,10,0" Click="TermsDecline_Click"/>
+                                <Button x:Name="WelcomeAcceptButton" Style="{StaticResource AccentButton}" Content="Accepter et continuer" Padding="28,12" IsEnabled="False" Click="Welcome_Click"/>
                             </StackPanel>
-                        </Border>
-                    </UniformGrid>
-                    <Grid Margin="0,24,0,0">
-                        <TextBlock Style="{StaticResource Subtle}" FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center" Margin="8,0,180,0">
-                            Centre PC est gratuit et libre (licence GPL). En commençant, vous acceptez ses
-                            <Hyperlink Click="Terms_Click" Foreground="{StaticResource Accent}">conditions d'utilisation</Hyperlink>.
-                            Aucune donnée personnelle n'est collectée :
-                            <Hyperlink Click="Privacy_Click" Foreground="{StaticResource Accent}">confidentialité</Hyperlink>.
-                        </TextBlock>
-                        <Button Style="{StaticResource AccentButton}" Content="Commencer" HorizontalAlignment="Right" Padding="28,12" Click="Welcome_Click"/>
+                        </Grid>
                     </Grid>
-                </StackPanel>
+
+                    <!-- Étape 3 : réglages recommandés (démarrage, raccourci, retours anonymes) -->
+                    <StackPanel x:Name="WelcomeSetupPanel" Visibility="Collapsed">
+                        <TextBlock Text="Réglez Centre PC en 30 secondes" FontFamily="{StaticResource DisplayFont}" FontSize="26" FontWeight="SemiBold"/>
+                        <TextBlock Text="Nos réglages recommandés. Tout reste modifiable à tout moment dans Réglages." Style="{StaticResource Subtle}" FontSize="14" Margin="0,4,0,0"/>
+
+                        <!-- 1. Raccourci du lanceur -->
+                        <Border Style="{StaticResource Card}" Margin="0,22,0,0">
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/></Grid.ColumnDefinitions>
+                                <Border Width="38" Height="38" CornerRadius="11" Background="{StaticResource AccentGradient}" VerticalAlignment="Top">
+                                    <TextBlock Text="&#xE721;" Style="{StaticResource Glyph}" FontSize="16" Foreground="White"/>
+                                </Border>
+                                <StackPanel Grid.Column="1" Margin="16,0,0,0">
+                                    <CheckBox x:Name="SetupLauncher" IsChecked="True" FontWeight="SemiBold" FontSize="15" Checked="SetupLauncher_Changed" Unchecked="SetupLauncher_Changed"
+                                              Content="Ouvrir mes applications d'un raccourci clavier"/>
+                                    <TextBlock Style="{StaticResource Subtle}" FontSize="13" TextWrapping="Wrap" Margin="0,4,0,0">Appuyez sur ce raccourci, tapez le nom d'une application, puis Entrée pour l'ouvrir.<InlineUIContainer BaselineAlignment="Center"><local:InfoTip Text="Fonctionne depuis n'importe quelle fenêtre. Une petite icône reste près de l'horloge ; pour arrêter Centre PC : clic droit sur l'icône, puis Quitter."/></InlineUIContainer></TextBlock>
+                                    <WrapPanel x:Name="SetupKeys" Margin="0,10,0,0"/>
+                                    <TextBlock x:Name="SetupKeysNote" Style="{StaticResource Subtle}" FontSize="12" TextWrapping="Wrap" Margin="0,8,0,0"/>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <!-- 2. Démarrage avec Windows -->
+                        <Border x:Name="SetupStartupRow" Style="{StaticResource Card}" Margin="0,10,0,0">
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/></Grid.ColumnDefinitions>
+                                <Border Width="38" Height="38" CornerRadius="11" Background="{StaticResource Surface2}" VerticalAlignment="Top">
+                                    <TextBlock Text="&#xE7E8;" Style="{StaticResource Glyph}" FontSize="16"/>
+                                </Border>
+                                <StackPanel Grid.Column="1" Margin="16,0,0,0">
+                                    <CheckBox x:Name="SetupStartup" IsChecked="True" FontWeight="SemiBold" FontSize="15" Content="Démarrer avec Windows, en arrière-plan"/>
+                                    <TextBlock Style="{StaticResource Subtle}" FontSize="13" TextWrapping="Wrap" Margin="0,4,0,0">Le raccourci fonctionne dès l'ouverture de session.<InlineUIContainer BaselineAlignment="Center"><local:InfoTip Text="Aucune fenêtre ne s'ouvre au démarrage : seule l'icône près de l'horloge apparaît, et les mises à jour sont surveillées."/></InlineUIContainer></TextBlock>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <!-- 3. Retours anonymes : choix explicite, rien n'est coché d'avance -->
+                        <Border Style="{StaticResource Card}" Margin="0,10,0,0">
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/></Grid.ColumnDefinitions>
+                                <Border Width="38" Height="38" CornerRadius="11" Background="{StaticResource Surface2}" VerticalAlignment="Top">
+                                    <TextBlock Text="&#xE8E1;" Style="{StaticResource Glyph}" FontSize="16"/>
+                                </Border>
+                                <StackPanel Grid.Column="1" Margin="16,0,0,0">
+                                    <TextBlock Text="Aider à améliorer Centre PC" FontWeight="SemiBold" FontSize="15"/>
+                                    <TextBlock Style="{StaticResource Subtle}" FontSize="13" TextWrapping="Wrap" Margin="0,4,0,0">Vos corrections et les erreurs rencontrées améliorent Centre PC pour tout le monde. Anonyme, rien de personnel.<InlineUIContainer BaselineAlignment="Center"><local:InfoTip Text="Partagé : les catégories que vous corrigez, le type des documents renommés, les noms de dossiers courants, les erreurs (sans chemin ni nom). Jamais un nom de fichier, le contenu d'un document ni un nom de personne. Le bouton « Voir ce qui serait envoyé » de Réglages montre tout avant l'envoi."/></InlineUIContainer> <Hyperlink Click="Privacy_Click" Foreground="{StaticResource Accent}">Confidentialité</Hyperlink></TextBlock>
+                                    <WrapPanel Margin="0,12,0,0">
+                                        <RadioButton x:Name="SetupFeedbackYes" Style="{StaticResource Chip}" GroupName="setupfeedback" Checked="SetupFeedback_Checked">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="&#xE73E;" Style="{StaticResource Glyph}" FontSize="12"/>
+                                                <TextBlock Text="Oui, j'aide avec des retours anonymes" Margin="8,0,0,0"/>
+                                            </StackPanel>
+                                        </RadioButton>
+                                        <RadioButton x:Name="SetupFeedbackNo" Style="{StaticResource Chip}" GroupName="setupfeedback" Checked="SetupFeedback_Checked">
+                                            <TextBlock Text="Non merci"/>
+                                        </RadioButton>
+                                    </WrapPanel>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <Grid Margin="0,22,0,0">
+                            <TextBlock x:Name="SetupHint" Style="{StaticResource Subtle}" FontSize="12.5" VerticalAlignment="Center" TextWrapping="Wrap" Margin="0,0,180,0"
+                                       Text="Choisissez une réponse pour les retours anonymes : refuser ne retire aucune fonction."/>
+                            <Button x:Name="SetupDoneButton" Style="{StaticResource AccentButton}" Content="Terminer" HorizontalAlignment="Right" Padding="32,12"
+                                    IsEnabled="False" Click="SetupDone_Click"/>
+                        </Grid>
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- Conditions d'utilisation, confidentialité et usage professionnel : lecture dans l'appli (Réglages, liens) -->
+        <Grid x:Name="TermsViewerOverlay" Visibility="Collapsed" Background="#E6090910">
+            <Border Width="900" VerticalAlignment="Center" HorizontalAlignment="Center" Background="{StaticResource Surface}"
+                    BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="20" Padding="40,30">
+                <Border.Effect><DropShadowEffect BlurRadius="40" ShadowDepth="6" Opacity="0.5"/></Border.Effect>
+                <Grid>
+                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="Conditions d'utilisation" FontFamily="{StaticResource DisplayFont}" FontSize="26" FontWeight="SemiBold"/>
+                        <TextBlock x:Name="TermsViewerSubtitle" Style="{StaticResource Subtle}" FontSize="13.5" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                        <WrapPanel Margin="0,12,0,0">
+                            <RadioButton x:Name="TermsTabConditions" Style="{StaticResource Chip}" GroupName="termstabs" Content="Conditions" Tag="conditions" Checked="TermsTab_Checked"/>
+                            <RadioButton x:Name="TermsTabPrivacy" Style="{StaticResource Chip}" GroupName="termstabs" Content="Confidentialité" Tag="confidentialite" Checked="TermsTab_Checked"/>
+                            <RadioButton x:Name="TermsTabPro" Style="{StaticResource Chip}" GroupName="termstabs" Content="Usage professionnel" Tag="pro" Checked="TermsTab_Checked"/>
+                        </WrapPanel>
+                    </StackPanel>
+                    <Border Grid.Row="1" Background="{StaticResource Surface2}" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="12" Margin="0,6,0,0">
+                        <ScrollViewer x:Name="TermsViewerScroll" MaxHeight="480" VerticalScrollBarVisibility="Auto" Focusable="True" Padding="22,16,14,16"
+                                      AutomationProperties.Name="Texte des conditions d'utilisation">
+                            <StackPanel x:Name="TermsViewerDoc" Margin="0,0,8,0"/>
+                        </ScrollViewer>
+                    </Border>
+                    <Button Grid.Row="2" Style="{StaticResource AccentButton}" Content="Fermer" HorizontalAlignment="Right" Padding="28,12" Margin="0,18,0,0" Click="TermsViewerClose_Click"/>
+                </Grid>
             </Border>
         </Grid>
 

@@ -627,7 +627,7 @@ public static class Updates
 
         try
         {
-            process = Process.Start(new ProcessStartInfo("powershell.exe",
+            process = Process.Start(new ProcessStartInfo(Native.SystemTool("powershell.exe"),
                 $"-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -EncodedCommand {encoded}")
             {
                 UseShellExecute = true, Verb = "runas", WindowStyle = ProcessWindowStyle.Hidden
@@ -642,11 +642,24 @@ public static class Updates
     /// Amorceur PowerShell (encodé pour -EncodedCommand) : relit le script et les paramètres une seule fois,
     /// vérifie leurs empreintes SHA-256 (code de sortie 99 si un fichier a été modifié) puis exécute ce texte-là.
     /// </summary>
+    /// <summary>
+    /// Début de toute commande lancée en administrateur : PowerShell ne charge que les modules des dossiers protégés
+    /// (Program Files, System32), et les programmes appelés par leur nom (winget…) ne sont cherchés que dans le PATH
+    /// de la machine et dans le dossier protégé de winget. Sans cela, un programme sans droits pourrait glisser un faux
+    /// module dans Documents\WindowsPowerShell\Modules ou un faux winget.exe dans %LOCALAPPDATA%\Microsoft\WindowsApps,
+    /// et le voir exécuté avec les droits administrateur.
+    /// </summary>
+    internal const string ElevatedPrologue =
+        "$env:PSModulePath=(Join-Path $env:ProgramFiles 'WindowsPowerShell\\Modules')+';'+(Join-Path $env:SystemRoot 'System32\\WindowsPowerShell\\v1.0\\Modules');" +
+        "$wg=(Get-AppxPackage -Name Microsoft.DesktopAppInstaller -ErrorAction SilentlyContinue|Sort-Object Version -Descending|Select-Object -First 1).InstallLocation;" +
+        "$env:Path=[Environment]::GetEnvironmentVariable('Path','Machine')+$(if($wg -and $wg.StartsWith($env:ProgramFiles,[StringComparison]::OrdinalIgnoreCase)){';'+$wg}else{''});";
+
     internal static string BuildBootstrap(string script, string paramsFile, string scriptText, string paramsText)
     {
         static string Sha(string text) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text))).ToLowerInvariant();
         static string Q(string s) => "'" + s.Replace("'", "''") + "'";
         var boot =
+            ElevatedPrologue +
             "$ErrorActionPreference='Stop';" +
             $"$s=[IO.File]::ReadAllText({Q(script)});$p=[IO.File]::ReadAllText({Q(paramsFile)});" +
             "$h={param($t) -join ([Security.Cryptography.SHA256]::Create().ComputeHash([Text.Encoding]::UTF8.GetBytes($t)) | ForEach-Object { $_.ToString('x2') })};" +
@@ -666,13 +679,14 @@ public static class Updates
         File.WriteAllText(scriptPath, scriptText, new UTF8Encoding(true));
         var sha = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(scriptText.TrimStart('\uFEFF')))).ToLowerInvariant();
         var boot =
+            ElevatedPrologue +
             "$ErrorActionPreference='Stop';" +
             $"$s=[IO.File]::ReadAllText({Q(scriptPath)});" +
             "$h=-join ([Security.Cryptography.SHA256]::Create().ComputeHash([Text.Encoding]::UTF8.GetBytes($s)) | ForEach-Object { $_.ToString('x2') });" +
             $"if ($h -ne '{sha}') {{ exit 99 }};" +
             "& ([scriptblock]::Create($s)) " + string.Join(" ", args.Select(a => $"-{a.name} {Q(a.value)}"));
         var encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(boot));
-        return Process.Start(new ProcessStartInfo("powershell.exe", $"-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -EncodedCommand {encoded}")
+        return Process.Start(new ProcessStartInfo(Native.SystemTool("powershell.exe"), $"-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -EncodedCommand {encoded}")
         {
             UseShellExecute = true, Verb = "runas", WindowStyle = ProcessWindowStyle.Hidden
         });
@@ -682,7 +696,7 @@ public static class Updates
     /// <summary>Lance un programme et renvoie sa sortie, ses erreurs et son code de fin, séparément.</summary>
     public static async Task<(string stdout, string stderr, int code)> RunAsync(string exe, string args)
     {
-        var psi = new ProcessStartInfo(exe, args)
+        var psi = new ProcessStartInfo(Native.SystemTool(exe), args)
         {
             RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true,
             StandardOutputEncoding = Encoding.UTF8, StandardErrorEncoding = Encoding.UTF8

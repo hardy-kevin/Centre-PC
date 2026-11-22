@@ -34,45 +34,57 @@ $doc = Get-Content $catalogue -Raw -Encoding UTF8 | ConvertFrom-Json
 foreach ($s in 'Classement', 'MotsCles') { if ($null -eq $doc.$s) { $doc | Add-Member -NotePropertyName $s -NotePropertyValue ([pscustomobject]@{}) } }
 $rapport = New-Object Collections.Generic.List[string]
 $ajouts = 0
-$invalide = { param($c) -not $c -or $c -eq 'personnalisé' -or $c.Length -gt 60 }
+# Les retours arrivent d'Internet : n'importe qui peut forger des envois (identifiants d'installation compris). Seules les
+# catégories d'origine de Centre PC sont acceptées, et tout texte repris dans le rapport est neutralisé (pas de lien,
+# de mention @, d'image ni de mise en forme) : la demande de fusion doit rester sûre à lire et à fusionner.
+$themes = [IO.File]::ReadAllText((Join-Path $racine 'Core\DefaultThemes.cs'))
+$categories = @([regex]::Matches($themes, '\bC\("([^"]{2,60})"') | ForEach-Object { $_.Groups[1].Value }) + 'Scripts'
+if ($categories.Count -lt 10) { throw "Liste des catégories d'origine introuvable dans Core\DefaultThemes.cs." }
+$invalide = { param($c) -not $c -or $c -notin $categories }
+function Sur([string]$t, [int]$max = 80) {
+    $t = ($t -replace '[\x00-\x1F\x7F`|<>\[\]()*_~#!\\]', ' ' -replace '@', '(at)' -replace 'https?:', '' -replace '\s+', ' ').Trim()
+    if ($t.Length -gt $max) { $t = $t.Substring(0, $max) }
+    return $t
+}
+$nomValide = { param($n) $n -and $n.Length -le 80 -and $n -notmatch '[\x00-\x1F<>`|\[\]]|https?:|@' }
 
 # ------------------------------------------------------------------ classements
 $rapport.Add('## Classements proposés'); $rapport.Add('')
 foreach ($g in (Vue 'classements.json') | Group-Object application) {
     $choix = @($g.Group | Sort-Object { [int]$_.installations } -Descending)
     $haut = $choix[0]
-    if ((& $invalide $haut.categorie) -or -not $g.Name -or $g.Name.Length -gt 80) { continue }
+    if ((& $invalide $haut.categorie) -or -not (& $nomValide $g.Name)) { continue }
     if ($choix.Count -gt 1 -and [int]$choix[1].installations -ge [int]$haut.installations) {
-        $rapport.Add("- Désaccord pour **$($g.Name)** : " + (($choix | ForEach-Object { "$($_.categorie) ($($_.installations))" }) -join ', ') + ' : rien ajouté.')
+        $rapport.Add("- Désaccord pour **$(Sur $g.Name)** : " + (($choix | ForEach-Object { "$(Sur $_.categorie 60) ($([int]$_.installations))" }) -join ', ') + ' : rien ajouté.')
         continue
     }
     $actuel = $doc.Classement.PSObject.Properties[$g.Name]
     if ($actuel) {
-        if ($actuel.Value -ne $haut.categorie) { $rapport.Add("- **$($g.Name)** : le catalogue dit « $($actuel.Value) », $($haut.installations) installations disent « $($haut.categorie) » (à trancher à la main).") }
+        if ($actuel.Value -ne $haut.categorie) { $rapport.Add("- **$(Sur $g.Name)** : le catalogue dit « $($actuel.Value) », $([int]$haut.installations) installations disent « $($haut.categorie) » (à trancher à la main).") }
         continue
     }
     $doc.Classement | Add-Member -NotePropertyName $g.Name -NotePropertyValue $haut.categorie
-    $rapport.Add("- Ajouté : **$($g.Name)** → $($haut.categorie) ($($haut.installations) installations)")
+    $rapport.Add("- Ajouté : **$(Sur $g.Name)** → $($haut.categorie) ($([int]$haut.installations) installations)")
     $ajouts++
 }
 
 # ------------------------------------------------------------------ mots-clés
 $rapport.Add(''); $rapport.Add('## Mots-clés proposés'); $rapport.Add('')
 foreach ($m in Vue 'motscles.json') {
-    if ((& $invalide $m.categorie) -or -not $m.mot -or $m.mot.Length -gt 60) { continue }
+    if ((& $invalide $m.categorie) -or -not (& $nomValide $m.mot) -or $m.mot.Length -gt 60) { continue }
     $liste = $doc.MotsCles.PSObject.Properties[$m.categorie]
     if (-not $liste) { $doc.MotsCles | Add-Member -NotePropertyName $m.categorie -NotePropertyValue @(); $liste = $doc.MotsCles.PSObject.Properties[$m.categorie] }
     if (@($liste.Value) -contains $m.mot) { continue }
     $liste.Value = @($liste.Value) + $m.mot
-    $rapport.Add("- Ajouté : « $($m.mot) » → $($m.categorie) ($($m.installations) installations)")
+    $rapport.Add("- Ajouté : « $(Sur $m.mot 60) » → $($m.categorie) ($([int]$m.installations) installations)")
     $ajouts++
 }
 
 # ------------------------------------------------------------------ logiciels sans catégorie (à classer à la main)
 $rapport.Add(''); $rapport.Add('## Logiciels restés sans catégorie'); $rapport.Add('')
 foreach ($n in (Vue 'nonreconnues.json') | Sort-Object { [int]$_.installations } -Descending | Select-Object -First 100) {
-    if ($doc.Classement.PSObject.Properties[$n.application]) { continue }
-    $rapport.Add("- $($n.application)" + $(if ($n.editeur) { " ($($n.editeur))" } else { '' }) + " : $($n.installations) installations")
+    if (-not $n.application -or $doc.Classement.PSObject.Properties[$n.application]) { continue }
+    $rapport.Add("- $(Sur $n.application)" + $(if ($n.editeur) { " — $(Sur $n.editeur 60)" } else { '' }) + " : $([int]$n.installations) installations")
 }
 
 $entete = "# Propositions du $(Get-Date -Format 'dd/MM/yyyy')`n`nDonnées agrégées des retours d'expérience (au moins $Minimum installations). " +

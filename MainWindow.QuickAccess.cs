@@ -57,10 +57,15 @@ public partial class MainWindow
         ApplyStartWithWindows();
     }
 
-    /// <summary>Lancement à l'ouverture de session (copie installée seulement), avec « --tray » : aucune fenêtre ne s'ouvre.</summary>
-    private static void ApplyStartWithWindows()
+    /// <summary>
+    /// Lancement à l'ouverture de session, sans fenêtre : clé « Run » avec « --tray » pour la copie installée, tâche de
+    /// démarrage du paquet pour la version Microsoft Store. <paramref name="fromUser"/> : choix fait à l'instant, un refus
+    /// de Windows est alors expliqué (jamais à chaque lancement).
+    /// </summary>
+    private void ApplyStartWithWindows(bool fromUser = false)
     {
-        if (Native.IsPackaged || !SelfInstall.IsInstalledCopy) return;
+        if (Native.IsPackaged) { _ = ApplyPackagedStartupAsync(fromUser); return; }
+        if (!SelfInstall.IsInstalledCopy) return;
         try
         {
             using var run = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run");
@@ -76,6 +81,12 @@ public partial class MainWindow
                 run.DeleteValue("CentrePC", false);
         }
         catch (Exception ex) { Log.Error("Démarrage avec Windows", ex); }
+    }
+
+    private async Task ApplyPackagedStartupAsync(bool fromUser)
+    {
+        var message = await PackagedStartup.SetAsync(Settings.Current.QuickAccess && Settings.Current.StartWithWindows);
+        if (message != null && fromUser) ShowToast(message);
     }
 
     /// <summary>Démarrage avec Windows : tout est chargé, mais seule l'icône près de l'horloge apparaît.</summary>
@@ -164,7 +175,7 @@ public partial class MainWindow
     /// <summary>« startup » : l'accès rapide est déjà utilisé, seule la proposition de démarrer avec Windows est faite.</summary>
     private bool _offerStartupOnly;
 
-    private bool CanStartWithWindows => SelfInstall.IsInstalledCopy && !Native.IsPackaged;
+    private static bool CanStartWithWindows => Native.IsPackaged || SelfInstall.IsInstalledCopy;
 
     /// <summary>
     /// Un seul écran proposé par lancement (accueil, accès rapide ou mise à jour de Centre PC) : les autres attendent le
@@ -172,54 +183,48 @@ public partial class MainWindow
     /// </summary>
     private bool _launchScreen;
 
+    /// <summary>
+    /// Raccourci proposé au lanceur : le premier vraiment libre, Alt + Espace d'abord (Alt + Espace est aussi celui de
+    /// ChatGPT, Ctrl + Alt + Espace celui de Claude…). Rien ne change si aucun n'est libre.
+    /// </summary>
+    private void ProposeFreeHotkey()
+    {
+        try
+        {
+            var scanned = HotkeyConflicts.ScanKnownApps();
+            var names = InstalledNames();
+            var candidates = new[] { new HotkeyCombo(HotkeyCombo.Alt, 0x20), new HotkeyCombo(HotkeyCombo.Ctrl | HotkeyCombo.Alt, 0x20), new HotkeyCombo(HotkeyCombo.Ctrl | HotkeyCombo.Shift, 0x20),
+                               new HotkeyCombo(HotkeyCombo.Alt | HotkeyCombo.Shift, 0x20), new HotkeyCombo(HotkeyCombo.Ctrl | HotkeyCombo.Alt | HotkeyCombo.Shift, 0x20) };
+            // Lecteur d'écran actif : Ctrl + Maj + Espace d'abord, et jamais de combinaison proche de celles de Windows
+            // (Alt + Espace ouvre le menu de la fenêtre, Alt + Maj change la langue du clavier) qui ferait perdre le fil.
+            // Le raccourci choisi ensuite par la personne est gardé tel quel.
+            if (Accessibility.ScreenReaderRunning)
+                candidates = new[] { new HotkeyCombo(HotkeyCombo.Ctrl | HotkeyCombo.Shift, 0x20), new HotkeyCombo(HotkeyCombo.Ctrl | HotkeyCombo.Alt | HotkeyCombo.Shift, 0x20),
+                                     new HotkeyCombo(HotkeyCombo.Ctrl | HotkeyCombo.Alt, 0x20) };
+            var free = candidates
+                .FirstOrDefault(c => HotkeyConflicts.Check(c, null, scanned, names).State is HotkeyState.Free or HotkeyState.Note);
+            if (free != null) Settings.Current.QuickAccessHotkey = free.Serialize();
+        }
+        catch (Exception ex) { Log.Error("Raccourci proposé", ex); }
+    }
+
     private void MaybeOfferQuickAccess()
     {
         var cfg = Settings.Current;
         if (_launchScreen) return;
         if (!cfg.OnboardingDone || !IsVisible || WelcomeOverlay.Visibility == Visibility.Visible || QuickOfferOverlay.Visibility == Visibility.Visible) return;
+        if (cfg.SetupDone) return;   // déjà réglé dans l'écran d'accueil (démarrage, raccourci, retours)
         // Accès rapide déjà actif mais Centre PC ne démarre pas avec Windows : on le propose une fois (jamais si l'accès rapide a été refusé)
         _offerStartupOnly = cfg.QuickAccessAsked;
         if (_offerStartupOnly && (!cfg.QuickAccess || cfg.StartWithWindows || cfg.StartupAsked || !CanStartWithWindows)) return;
-        if (!_offerStartupOnly)
-        {
-            // Raccourci proposé : le premier vraiment libre (Ctrl + Alt + Espace est celui de Claude, Alt + Espace celui de ChatGPT…)
-            try
-            {
-                var scanned = HotkeyConflicts.ScanKnownApps();
-                var names = InstalledNames();
-                var candidates = new[] { new HotkeyCombo(HotkeyCombo.Ctrl | HotkeyCombo.Alt, 0x20), new HotkeyCombo(HotkeyCombo.Ctrl | HotkeyCombo.Shift, 0x20),
-                                   new HotkeyCombo(HotkeyCombo.Alt | HotkeyCombo.Shift, 0x20), new HotkeyCombo(HotkeyCombo.Ctrl | HotkeyCombo.Alt | HotkeyCombo.Shift, 0x20) };
-                // Lecteur d'écran actif : Ctrl + Maj + Espace d'abord, et jamais de combinaison proche de celles de Windows
-                // (Alt + Espace ouvre le menu de la fenêtre, Alt + Maj change la langue du clavier) qui ferait perdre le fil.
-                // Le raccourci choisi ensuite par la personne est gardé tel quel.
-                if (Accessibility.ScreenReaderRunning)
-                    candidates = new[] { new HotkeyCombo(HotkeyCombo.Ctrl | HotkeyCombo.Shift, 0x20), new HotkeyCombo(HotkeyCombo.Ctrl | HotkeyCombo.Alt | HotkeyCombo.Shift, 0x20),
-                                         new HotkeyCombo(HotkeyCombo.Ctrl | HotkeyCombo.Alt, 0x20) };
-                var free = candidates
-                    .FirstOrDefault(c => HotkeyConflicts.Check(c, null, scanned, names).State is HotkeyState.Free or HotkeyState.Note);
-                if (free != null) cfg.QuickAccessHotkey = free.Serialize();
-            }
-            catch (Exception ex) { Log.Error("Raccourci proposé", ex); }
-        }
+        if (!_offerStartupOnly) ProposeFreeHotkey();
         var hk = CurrentHotkey;
         QuickOfferBadge.Text = _offerStartupOnly ? "Nouveau" : "Accès rapide";
         QuickOfferTitle.Text = _offerStartupOnly ? "Votre lanceur, prêt dès l'allumage du PC" : "Centre PC, toujours à portée de main";
         QuickOfferText.Text = _offerStartupOnly
             ? "Centre PC peut démarrer avec Windows, sans fenêtre : votre raccourci fonctionne dès l'ouverture de session."
             : "Inutile de garder une fenêtre ouverte : un raccourci suffit pour lancer n'importe quelle application.";
-        QuickOfferKeys.Children.Clear();
-        if (hk != null)
-            foreach (var part in hk.Label.Split(" + "))
-            {
-                if (QuickOfferKeys.Children.Count > 0)
-                    QuickOfferKeys.Children.Add(new TextBlock { Text = "+", Margin = new Thickness(8, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center, Opacity = 0.6 });
-                QuickOfferKeys.Children.Add(new Border
-                {
-                    Background = (System.Windows.Media.Brush)FindResource("Surface2"), BorderBrush = (System.Windows.Media.Brush)FindResource("Line"),
-                    BorderThickness = new Thickness(1, 1, 1, 3), CornerRadius = new CornerRadius(8), Padding = new Thickness(14, 6, 14, 6),
-                    Child = new TextBlock { Text = part, FontWeight = FontWeights.SemiBold, FontSize = 14 }
-                });
-            }
+        FillKeyCaps(QuickOfferKeys, hk);
         QuickOfferStartupRow.Visibility = CanStartWithWindows ? Visibility.Visible : Visibility.Collapsed;
         QuickOfferStartup.IsChecked = true;
         QuickOfferStartup.Visibility = _offerStartupOnly ? Visibility.Collapsed : Visibility.Visible;   // décision portée par le bouton
@@ -267,7 +272,7 @@ public partial class MainWindow
         _quickInit = true;
         var cfg = Settings.Current;
         QuickAccessCheck.IsChecked = cfg.QuickAccess;
-        bool canStartup = SelfInstall.IsInstalledCopy && !Native.IsPackaged;
+        bool canStartup = CanStartWithWindows;
         StartWithWindowsCheck.IsChecked = cfg.StartWithWindows;
         StartWithWindowsCheck.IsEnabled = cfg.QuickAccess && canStartup;
         StartWithWindowsCheck.ToolTip = canStartup ? null : "Disponible dans la version installée de Centre PC";
@@ -506,7 +511,7 @@ public partial class MainWindow
         if (_quickInit) return;
         Settings.Current.StartWithWindows = StartWithWindowsCheck.IsChecked == true;
         Settings.Save();
-        ApplyStartWithWindows();
+        ApplyStartWithWindows(fromUser: true);
     }
 
     private void QuickTry_Click(object sender, RoutedEventArgs e) => _launcher?.ShowLauncher(nearTray: false);

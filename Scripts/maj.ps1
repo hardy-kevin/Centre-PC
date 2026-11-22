@@ -149,9 +149,13 @@ if ($opt.Apps) {
     }
     if (-not $winget) { Etape 'apps' 'ERREUR' 'winget introuvable (installez « Programme d''installation d''application » depuis le Microsoft Store)' }
     else {
-        # Installateurs : dans le cache (hors du dossier de données, qui peut être synchronisé par OneDrive)
-        $cacheRacine = if ($opt.CacheDir) { $opt.CacheDir } else { $opt.DataDir }
-        $cache = Join-Path $cacheRacine 'Installateurs'
+        # Installateurs préparés : dans un dossier de Program Files, non modifiable sans droits. Ce script tourne en
+        # administrateur et y supprime des dossiers : dans un dossier de l'utilisateur, un programme sans droits pourrait
+        # remplacer un sous-dossier par un lien vers un dossier de Windows et le faire vider avec les droits administrateur.
+        # (Sans droits administrateur, par exemple pour les tests automatiques, le cache de l'utilisateur suffit.)
+        $admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+        $cache = if ($admin) { Join-Path $env:ProgramFiles 'CentrePC-session\Installateurs' }
+                 else { Join-Path $(if ($opt.CacheDir) { $opt.CacheDir } else { $opt.DataDir }) 'Installateurs' }
         New-Item -ItemType Directory -Path $cache -Force | Out-Null
         Get-ChildItem -LiteralPath $cache -Directory -ErrorAction SilentlyContinue |
             Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-14) } | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue

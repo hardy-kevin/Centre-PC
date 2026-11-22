@@ -30,7 +30,8 @@ public static class OnlineClassifier
 
     private static HttpClient CreateHttp()
     {
-        var h = new HttpClient { Timeout = TimeSpan.FromSeconds(12) };
+        // Réponses plafonnées : un site qui renverrait une page géante ne doit ni saturer la mémoire ni bloquer l'analyse
+        var h = new HttpClient { Timeout = TimeSpan.FromSeconds(12), MaxResponseContentBufferSize = 8 * 1024 * 1024 };
         h.DefaultRequestHeaders.UserAgent.ParseAdd("CentrePC/1.0 (outil de rangement d'applications Windows)");
         return h;
     }
@@ -555,7 +556,7 @@ public static class OnlineClassifier
     private static async Task<OnlineResult> FromWebsite(string url)
     {
         if (string.IsNullOrWhiteSpace(url) || !Uri.TryCreate(url.Trim(), UriKind.Absolute, out var uri)
-            || (uri.Scheme != "https" && uri.Scheme != "http")) return null;
+            || (uri.Scheme != "https" && uri.Scheme != "http") || !IsPublicWebHost(uri)) return null;
         using var resp = await Http.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead);
         if (!resp.IsSuccessStatusCode || resp.Content.Headers.ContentType?.MediaType?.Contains("html") != true) return null;
         using var stream = await resp.Content.ReadAsStreamAsync();
@@ -565,6 +566,26 @@ public static class OnlineClassifier
         var text = PageSummary(new string(buf, 0, n));
         var cat = Decide(text, out var evidence);
         return cat == null ? null : new OnlineResult { Category = cat, Source = "site " + uri.Host, Evidence = evidence, Date = DateTime.Now };
+    }
+
+    /// <summary>
+    /// Adresse indiquée par un programme installé (donc par n'importe qui) : seulement un site public, sur le port web
+    /// habituel. Jamais le PC lui-même, le réseau local (box, imprimante, NAS) ni un port inhabituel.
+    /// </summary>
+    internal static bool IsPublicWebHost(Uri uri)
+    {
+        if (uri == null || !uri.IsDefaultPort || uri.IsLoopback || !string.IsNullOrEmpty(uri.UserInfo)) return false;
+        var host = uri.IdnHost.TrimEnd('.');
+        if (host.Equals("localhost", StringComparison.OrdinalIgnoreCase) || !host.Contains('.')
+            || host.EndsWith(".local", StringComparison.OrdinalIgnoreCase) || host.EndsWith(".lan", StringComparison.OrdinalIgnoreCase)
+            || host.EndsWith(".home", StringComparison.OrdinalIgnoreCase) || host.EndsWith(".internal", StringComparison.OrdinalIgnoreCase)) return false;
+        if (!System.Net.IPAddress.TryParse(host.Trim('[', ']'), out var ip)) return true;
+        if (ip.IsIPv4MappedToIPv6) ip = ip.MapToIPv4();
+        if (ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6)
+            return !(System.Net.IPAddress.IsLoopback(ip) || ip.IsIPv6LinkLocal || ip.IsIPv6SiteLocal || ip.IsIPv6UniqueLocal);
+        var b = ip.GetAddressBytes();
+        return !(b[0] == 10 || b[0] == 127 || b[0] == 0 || (b[0] == 169 && b[1] == 254) || (b[0] == 172 && b[1] >= 16 && b[1] <= 31)
+                 || (b[0] == 192 && b[1] == 168) || (b[0] == 100 && b[1] >= 64 && b[1] <= 127) || b[0] >= 224);
     }
 
     /// <summary>Titre, description et mots-clés d'une page web (balises title et meta).</summary>

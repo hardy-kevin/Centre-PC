@@ -118,7 +118,7 @@ Get-PnpDevice -Class DiskDrive -PresentOnly | ForEach-Object {
         try
         {
             var encoded = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes("[Console]::OutputEncoding=[Text.Encoding]::UTF8; " + script));
-            using var p = Process.Start(new ProcessStartInfo("powershell.exe", $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand {encoded}")
+            using var p = Process.Start(new ProcessStartInfo(Native.SystemTool("powershell.exe"), $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand {encoded}")
             { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, StandardOutputEncoding = System.Text.Encoding.UTF8 });
             var output = p.StandardOutput.ReadToEnd();
             p.WaitForExit(20000);

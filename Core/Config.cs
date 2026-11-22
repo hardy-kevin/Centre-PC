@@ -66,11 +66,16 @@ public class Config
     /// <summary>Identifier automatiquement en ligne les applications inconnues.</summary>
     public bool AutoOnline { get; set; } = true;
     public bool OnboardingDone { get; set; }
+    /// <summary>Version des conditions d'utilisation acceptée (voir <see cref="Terms.Version"/>) et date de l'acceptation.</summary>
+    public string TermsAccepted { get; set; }
+    public DateTime? TermsAcceptedOn { get; set; }
+    /// <summary>Écran « Réglez Centre PC » (démarrage, raccourci, retours) déjà passé.</summary>
+    public bool SetupDone { get; set; }
     /// <summary>Accès rapide : icône près de l'horloge et raccourci clavier ouvrant le lanceur (proposé une fois, jamais imposé).</summary>
     public bool QuickAccess { get; set; }
     public bool QuickAccessAsked { get; set; }
     /// <summary>Raccourci du lanceur (« modificateurs:touche », « none ») ; voir <see cref="HotkeyCombo"/>.</summary>
-    public string QuickAccessHotkey { get; set; } = "3:32";
+    public string QuickAccessHotkey { get; set; } = "1:32";   // Alt + Espace
     /// <summary>Réglages d'autres applications modifiés pour libérer un raccourci, remis à l'identique ensuite.</summary>
     public List<HotkeyBackup> HotkeyBackups { get; set; } = new();
     /// <summary>Propriétaires identifiés par l'utilisateur (« Identifier… » : il appuie, on regarde quelle fenêtre réagit).</summary>

@@ -19,6 +19,9 @@
     <Compile Include="..\..\Core\**\*.cs" Link="Core\%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Include="..\..\GlobalUsings.cs" Link="GlobalUsings.cs" />
     <EmbeddedResource Include="..\..\Scripts\maj.ps1" LogicalName="maj.ps1" Link="maj.ps1" />
+    <EmbeddedResource Include="..\..\CONDITIONS.md" LogicalName="CONDITIONS.md" Link="CONDITIONS.md" />
+    <EmbeddedResource Include="..\..\CONFIDENTIALITE.md" LogicalName="CONFIDENTIALITE.md" Link="CONFIDENTIALITE.md" />
+    <EmbeddedResource Include="..\..\USAGE-PROFESSIONNEL.md" LogicalName="USAGE-PROFESSIONNEL.md" Link="USAGE-PROFESSIONNEL.md" />
     <EmbeddedResource Include="..\..\Catalogue\noms.gz" LogicalName="noms.gz" Link="noms.gz" Condition="Exists('..\..\Catalogue\noms.gz')" />
     <None Include="..\..\Scripts\maj.ps1" Link="Scripts\maj.ps1" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

@@ -81,7 +81,7 @@ public partial class MainWindow : Window
         if (_started) return;   // déjà lancé en arrière-plan (démarrage avec Windows), la fenêtre s'affiche seulement maintenant
         _started = true;
         FocusStart();
-        if (!Settings.Current.OnboardingDone) { WelcomeOverlay.Visibility = Visibility.Visible; _launchScreen = true; }
+        ShowWelcomeIfNeeded();   // conditions à accepter (premier lancement ou nouvelle version), puis réglages recommandés
         ApplyOnlineState();
         if (App.OpenUpdatesPage) ShowUpdatesPage();
         // Vérification quotidienne application fermée : tâche planifiée créée / retirée selon le réglage (copie installée seulement)
@@ -264,20 +264,6 @@ public partial class MainWindow : Window
         AppsTip.Visibility = _apps.Count > 0 && Settings.Current.AppFolders.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    // ---------- Présentation
-    private void Welcome_Click(object sender, RoutedEventArgs e)
-    {
-        bool firstRun = !Settings.Current.OnboardingDone;
-        WelcomeOverlay.Visibility = Visibility.Collapsed;
-        Settings.Current.OnboardingDone = true;
-        Settings.Save();
-        FocusStart();
-        // Premier lancement : l'accès rapide (fenêtre fermée, démarrage avec Windows, raccourci) est proposé
-        // juste après l'accueil, sans attendre le lancement suivant
-        if (firstRun) _launchScreen = false;
-        MaybeOfferQuickAccess();
-    }
-
     private System.Windows.Threading.DispatcherTimer _feedbackTimer;
 
     /// <summary>Catalogue signé : s'il a changé, la liste est reclassée (les choix de l'utilisateur restent prioritaires).</summary>
@@ -289,8 +275,6 @@ public partial class MainWindow : Window
         try { await PersonNames.RefreshAsync(DateTime.Now); }
         catch (Exception ex) { Log.Error("Listes de noms", ex); }
     }
-
-    private void ShowWelcome_Click(object sender, RoutedEventArgs e) => WelcomeOverlay.Visibility = Visibility.Visible;
 
     // =====================================================================================
     //  Fenêtre, navigation, notifications

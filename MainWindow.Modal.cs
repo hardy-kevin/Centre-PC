@@ -22,7 +22,7 @@ public partial class MainWindow
     /// <summary>Fenêtres superposées, de la plus basse à la plus haute (ordre du XAML).</summary>
     private Grid[] Overlays => _overlays ??= new[]
     {
-        ThemeEditor, SorterOverlay, DocSorterOverlay, ManagerOverlay, DocPlanOverlay, DeviceTestOverlay, PromptOverlay, WelcomeOverlay, QuickOfferOverlay, AppUpdateOverlay
+        ThemeEditor, SorterOverlay, DocSorterOverlay, ManagerOverlay, DocPlanOverlay, DeviceTestOverlay, PromptOverlay, WelcomeOverlay, TermsViewerOverlay, QuickOfferOverlay, AppUpdateOverlay
     };
 
     private FrameworkElement[] Pages => new FrameworkElement[] { PageApps, PageDesktop, PageDocuments, PageUpdates, PageDevices, PageSettings };
@@ -50,7 +50,7 @@ public partial class MainWindow
         foreach (var p in Pages) p.IsEnabled = !modal;
         foreach (var o in shown) o.IsEnabled = o == top;
         // Les fenêtres d'accueil et de mise à jour couvrent déjà tout l'écran, menu compris
-        SidebarShield.Visibility = modal && top != WelcomeOverlay && top != AppUpdateOverlay && top != QuickOfferOverlay ? Visibility.Visible : Visibility.Collapsed;
+        SidebarShield.Visibility = modal && top != WelcomeOverlay && top != TermsViewerOverlay && top != AppUpdateOverlay && top != QuickOfferOverlay ? Visibility.Visible : Visibility.Collapsed;
 
         if (top != _modalTop)
         {
