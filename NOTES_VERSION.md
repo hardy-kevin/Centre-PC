@@ -1,3 +1,3 @@
-## Centre PC 1.2.11
+## Centre PC 1.2.12
 
-- Amélioration du catalogue
+- Optimisation des rate limit permettant de catégoriser les applications

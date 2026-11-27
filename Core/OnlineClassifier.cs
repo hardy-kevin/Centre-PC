@@ -28,11 +28,14 @@ public static class OnlineClassifier
     private static Dictionary<string, OnlineResult> _cache;
     private static readonly HttpClient Http = CreateHttp();
 
+    /// <summary>Identification demandée par les services publics (Wikimedia notamment) : nom, version et adresse de contact.</summary>
+    private const string UserAgent = "CentrePC/1.0 (+https://github.com/hardy-kevin/Centre-PC; outil de rangement d'applications Windows)";
+
     private static HttpClient CreateHttp()
     {
         // Réponses plafonnées : un site qui renverrait une page géante ne doit ni saturer la mémoire ni bloquer l'analyse
         var h = new HttpClient { Timeout = TimeSpan.FromSeconds(12), MaxResponseContentBufferSize = 8 * 1024 * 1024 };
-        h.DefaultRequestHeaders.UserAgent.ParseAdd("CentrePC/1.0 (outil de rangement d'applications Windows)");
+        h.DefaultRequestHeaders.UserAgent.ParseAdd(UserAgent);
         return h;
     }
 
@@ -241,28 +244,38 @@ public static class OnlineClassifier
             {
                 var name = AppKinds.StripShortcutSuffix(app.Name);
                 var pkg = AppKinds.AndroidPackage(app.Target);
+                var state = new SearchState();
                 OnlineResult r;
                 if (pkg != null)
                     // Application Android lancée par un émulateur : sa fiche Google Play, et rien d'autre (le nom seul est ambigu)
-                    r = await Try(() => FromGooglePlay(pkg));
+                    r = await Try(() => FromGooglePlay(pkg), state);
                 else
                 {
                     // Ce que le programme contient (sites cités, site officiel) : lu sur le PC, sans connexion
                     var embedded = await Task.Run(() => EmbeddedHints(app));
                     var homepage = app.Homepage ?? embedded.homepage;
-                    r = await Try(() => FromWinget(name, wingetList))
-                        ?? await Try(() => FromWebsite(homepage))
+                    r = await Try(() => FromWinget(name, wingetList), state)
+                        ?? await Try(() => FromWebsite(homepage), state)
                         ?? embedded.result
-                        ?? await Try(() => FromFlathub(name))
-                        ?? await Try(() => FromSteam(name, app))
-                        ?? await Try(() => FromGitHub(name, app, homepage))
-                        ?? await Try(() => FromWikidata(name));
+                        ?? await Try(() => FromFlathub(name), state)
+                        ?? await Try(() => FromSteam(name, app), state)
+                        ?? await Try(() => FromGitHub(name, app, homepage), state)
+                        ?? await Try(() => FromWikidata(name), state);
                 }
                 lock (_cache)
                 {
-                    // Vérification d'une application déjà trouvée : sans nouvelle réponse, l'ancien résultat est gardé (et redaté)
-                    if (r == null && _cache.TryGetValue(Key(app.Name), out var previous) && previous.Category != null) { previous.Date = DateTime.Now; r = previous; }
-                    _cache[Key(app.Name)] = r ?? new OnlineResult { Date = DateTime.Now };
+                    if (r == null && state.Incomplete)
+                    {
+                        // Un service a demandé de patienter : la recherche n'est pas finie. Rien n'est noté (ni « introuvable »,
+                        // ni nouvelle date) : l'application sera recherchée en entier au prochain passage.
+                        if (_cache.TryGetValue(Key(app.Name), out var kept)) r = kept;
+                    }
+                    else
+                    {
+                        // Vérification d'une application déjà trouvée : sans nouvelle réponse, l'ancien résultat est gardé (et redaté)
+                        if (r == null && _cache.TryGetValue(Key(app.Name), out var previous) && previous.Category != null) { previous.Date = DateTime.Now; r = previous; }
+                        _cache[Key(app.Name)] = r ?? new OnlineResult { Date = DateTime.Now };
+                    }
                 }
                 if (r?.Category != null) Interlocked.Increment(ref found);
             }
@@ -293,11 +306,127 @@ public static class OnlineClassifier
         return cat == null ? null : new OnlineResult { Category = cat, Source = "winget " + match.id, Evidence = evidence, Date = DateTime.Now };
     }
 
-    /// <summary>Une source en panne ou injoignable ne bloque pas les suivantes.</summary>
-    private static async Task<OnlineResult> Try(Func<Task<OnlineResult>> source)
+    /// <summary>Recherche d'une application : vrai si une source n'a pas pu répondre parce qu'elle demandait de patienter.</summary>
+    private sealed class SearchState { public bool Incomplete; }
+
+    /// <summary>
+    /// Une source en panne ou injoignable ne bloque pas les suivantes. Une source qui demande de ralentir n'est pas une panne :
+    /// courte attente → elle est réessayée une fois ; attente longue → elle est mise en pause et la recherche sera refaite plus tard.
+    /// </summary>
+    private static async Task<OnlineResult> Try(Func<Task<OnlineResult>> source, SearchState state)
     {
-        try { return await source(); }
-        catch (Exception ex) { Log.Error("Recherche en ligne", ex); return null; }
+        for (int attempt = 0; ; attempt++)
+        {
+            try { return await source(); }
+            catch (SourceBusyException ex)
+            {
+                Pause(ex.Service, ex.Wait);
+                if (attempt == 0 && ex.Wait <= MaxWait) continue;   // le tour suivant attend la fin de la pause
+                state.Incomplete = true;
+                return null;
+            }
+            catch (Exception ex) { Log.Error("Recherche en ligne", ex); return null; }
+        }
+    }
+
+    // ------------------------------------------------------------------ limites des services
+    /// <summary>Service qui demande de ralentir (réponse 429 ou 503, quota GitHub épuisé) : attendu, pas une erreur.</summary>
+    internal sealed class SourceBusyException : Exception
+    {
+        public string Service { get; }
+        public TimeSpan Wait { get; }
+        public SourceBusyException(string source, TimeSpan wait) : base($"{source} demande de patienter {wait.TotalSeconds:0} s")
+        { Service = source; Wait = wait; }
+    }
+
+    /// <summary>
+    /// Intervalle minimal entre deux requêtes vers un même service, pour rester sous ses limites publiées
+    /// (GitHub : 10 recherches par minute sans compte ; Steam : environ 200 requêtes par 5 minutes ; Wikimedia : usage modéré).
+    /// </summary>
+    internal static readonly Dictionary<string, TimeSpan> Spacing = new()
+    {
+        ["GitHub"] = TimeSpan.FromSeconds(6.5), ["Steam"] = TimeSpan.FromSeconds(1.6), ["Wikidata"] = TimeSpan.FromSeconds(1),
+        ["Google Play"] = TimeSpan.FromSeconds(1), ["Flathub"] = TimeSpan.FromSeconds(0.5),
+    };
+    /// <summary>Au-delà de cette attente, la source est sautée et la recherche refaite au prochain passage.</summary>
+    internal static readonly TimeSpan MaxWait = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan MaxPause = TimeSpan.FromHours(1);
+    private static readonly Dictionary<string, DateTime> NextSlot = new(), PausedUntil = new();
+    private static readonly object Pace = new();
+
+    /// <summary>Met un service en pause (durée bornée à une heure) ; signalé une fois dans le journal, sans le compter comme une erreur.</summary>
+    internal static void Pause(string source, TimeSpan wait)
+    {
+        if (wait < TimeSpan.Zero) wait = TimeSpan.Zero;
+        if (wait > MaxPause) wait = MaxPause;
+        bool fresh;
+        lock (Pace)
+        {
+            var until = DateTime.UtcNow + wait;
+            fresh = !PausedUntil.TryGetValue(source, out var cur) || cur < DateTime.UtcNow;
+            if (!PausedUntil.TryGetValue(source, out cur) || until > cur) PausedUntil[source] = until;
+        }
+        if (fresh) Log.Info($"Recherche en ligne : {source} demande de patienter, reprise dans {Math.Ceiling(wait.TotalSeconds)} s");
+    }
+
+    /// <summary>
+    /// Réserve le prochain créneau d'un service et renvoie l'attente nécessaire, ou null si le service est en pause
+    /// pour plus de <see cref="MaxWait"/>.
+    /// </summary>
+    internal static TimeSpan? ReserveTurn(string source, DateTime now)
+    {
+        lock (Pace)
+        {
+            var paused = PausedUntil.TryGetValue(source, out var p) ? p : DateTime.MinValue;
+            if (paused - now > MaxWait) return null;
+            var start = new[] { now, NextSlot.TryGetValue(source, out var n) ? n : DateTime.MinValue, paused }.Max();
+            NextSlot[source] = start + (Spacing.TryGetValue(source, out var gap) ? gap : TimeSpan.Zero);
+            return start - now;
+        }
+    }
+
+    /// <summary>Durée demandée par le service (en-tête Retry-After, ou remise à zéro du quota GitHub), une minute par défaut.</summary>
+    internal static TimeSpan WaitAsked(HttpResponseMessage resp)
+    {
+        var ra = resp.Headers.RetryAfter;
+        if (ra?.Delta is TimeSpan d) return d;
+        if (ra?.Date is DateTimeOffset at) return at - DateTimeOffset.UtcNow;
+        if (resp.Headers.TryGetValues("x-ratelimit-reset", out var reset) && long.TryParse(reset.FirstOrDefault(), out var epoch))
+            return DateTimeOffset.FromUnixTimeSeconds(epoch) - DateTimeOffset.UtcNow + TimeSpan.FromSeconds(1);
+        return TimeSpan.FromMinutes(1);
+    }
+
+    /// <summary>Le service demande-t-il de ralentir ? (429, 503, ou 403 de GitHub avec quota épuisé)</summary>
+    internal static bool IsBusy(HttpResponseMessage resp) =>
+        (int)resp.StatusCode is 429 or 503
+        || ((int)resp.StatusCode == 403 && resp.Headers.TryGetValues("x-ratelimit-remaining", out var left) && left.FirstOrDefault() == "0");
+
+    /// <summary>Requête vers un service limité : attend son tour, et signale une demande de ralentir par <see cref="SourceBusyException"/>.</summary>
+    private static async Task<HttpResponseMessage> SendAsync(string source, Func<HttpRequestMessage> request)
+    {
+        var wait = ReserveTurn(source, DateTime.UtcNow);
+        if (wait == null)
+        {
+            TimeSpan left;
+            lock (Pace) left = PausedUntil[source] - DateTime.UtcNow;
+            throw new SourceBusyException(source, left);
+        }
+        if (wait > TimeSpan.Zero) await Task.Delay(wait.Value);
+        var resp = await Http.SendAsync(request());
+        if (IsBusy(resp))
+        {
+            var asked = WaitAsked(resp);
+            resp.Dispose();
+            throw new SourceBusyException(source, asked);
+        }
+        return resp;
+    }
+
+    private static async Task<string> GetStringAsync(string source, string url)
+    {
+        using var resp = await SendAsync(source, () => new HttpRequestMessage(HttpMethod.Get, url));
+        resp.EnsureSuccessStatusCode();
+        return await resp.Content.ReadAsStringAsync();
     }
 
     /// <summary>Nom sans « (x64) », « 64-bit »… pour la recherche.</summary>
@@ -356,8 +485,10 @@ public static class OnlineClassifier
     {
         var clean = Clean(name);
         if (clean.Length < 3) return null;
-        using var body = new StringContent(JsonSerializer.Serialize(new { query = clean }), System.Text.Encoding.UTF8, "application/json");
-        using var resp = await Http.PostAsync("https://flathub.org/api/v2/search", body);
+        using var resp = await SendAsync("Flathub", () => new HttpRequestMessage(HttpMethod.Post, "https://flathub.org/api/v2/search")
+        {
+            Content = new StringContent(JsonSerializer.Serialize(new { query = clean }), System.Text.Encoding.UTF8, "application/json")
+        });
         if (!resp.IsSuccessStatusCode) return null;
         using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
         if (!doc.RootElement.TryGetProperty("hits", out var hits) || hits.ValueKind != JsonValueKind.Array) return null;
@@ -395,14 +526,14 @@ public static class OnlineClassifier
     {
         var clean = Clean(name);
         if (clean.Length < 3) return null;
-        using var search = JsonDocument.Parse(await Http.GetStringAsync(
+        using var search = JsonDocument.Parse(await GetStringAsync("Steam",
             $"https://store.steampowered.com/api/storesearch/?term={Uri.EscapeDataString(clean)}&l=english&cc=FR"));
         if (!search.RootElement.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array) return null;
         var hit = items.EnumerateArray().FirstOrDefault(i => i.TryGetProperty("name", out var n) && Simple(n.GetString()) == Simple(clean));
         if (hit.ValueKind == JsonValueKind.Undefined || !hit.TryGetProperty("id", out var idEl)) return null;
         var id = idEl.ToString();
 
-        using var details = JsonDocument.Parse(await Http.GetStringAsync($"https://store.steampowered.com/api/appdetails?appids={id}&l=english"));
+        using var details = JsonDocument.Parse(await GetStringAsync("Steam", $"https://store.steampowered.com/api/appdetails?appids={id}&l=english"));
         if (!details.RootElement.TryGetProperty(id, out var entry) || !entry.TryGetProperty("data", out var data)) return null;
         var genres = data.TryGetProperty("genres", out var g) && g.ValueKind == JsonValueKind.Array
             ? g.EnumerateArray().Select(x => (id: x.TryGetProperty("id", out var gi) ? gi.ToString() : "", label: x.TryGetProperty("description", out var gd) ? gd.GetString() : "")).ToList()
@@ -459,7 +590,8 @@ public static class OnlineClassifier
     /// </summary>
     private static async Task<OnlineResult> FromGooglePlay(string package)
     {
-        using var resp = await Http.GetAsync($"https://play.google.com/store/apps/details?id={Uri.EscapeDataString(package)}&hl=fr&gl=FR");
+        using var resp = await SendAsync("Google Play", () => new HttpRequestMessage(HttpMethod.Get,
+            $"https://play.google.com/store/apps/details?id={Uri.EscapeDataString(package)}&hl=fr&gl=FR"));
         if (!resp.IsSuccessStatusCode) return null;
         var html = await resp.Content.ReadAsStringAsync();
         if (html.Length > 3_000_000) html = html.Substring(0, 3_000_000);
@@ -571,6 +703,7 @@ public static class OnlineClassifier
             if (uri.Scheme != "https" && uri.Scheme != "http") return null;
         }
         using var _resp = resp;
+        if (IsBusy(resp)) throw new SourceBusyException("site " + uri.Host, WaitAsked(resp));
         if (!resp.IsSuccessStatusCode || resp.Content.Headers.ContentType?.MediaType?.Contains("html") != true) return null;
         using var stream = await resp.Content.ReadAsStreamAsync();
         var buf = new char[200_000];
@@ -613,7 +746,7 @@ public static class OnlineClassifier
     private static HttpClient CreateSiteHttp()
     {
         var h = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromSeconds(12), MaxResponseContentBufferSize = 8 * 1024 * 1024 };
-        h.DefaultRequestHeaders.UserAgent.ParseAdd("CentrePC/1.0 (outil de rangement d'applications Windows)");
+        h.DefaultRequestHeaders.UserAgent.ParseAdd(UserAgent);
         return h;
     }
 
@@ -654,11 +787,13 @@ public static class OnlineClassifier
     {
         var clean = Clean(name);
         if (Simple(clean).Length < 4) return null;
-        using var req = new HttpRequestMessage(HttpMethod.Get,
-            $"https://api.github.com/search/repositories?q={Uri.EscapeDataString(clean)}+in:name&per_page=8");
-        req.Headers.Accept.ParseAdd("application/vnd.github+json");
-        using var resp = await Http.SendAsync(req);
-        if (!resp.IsSuccessStatusCode) return null;   // limite de requêtes atteinte : ce sera pour la prochaine fois
+        using var resp = await SendAsync("GitHub", () =>
+        {
+            var req = new HttpRequestMessage(HttpMethod.Get, $"https://api.github.com/search/repositories?q={Uri.EscapeDataString(clean)}+in:name&per_page=8");
+            req.Headers.Accept.ParseAdd("application/vnd.github+json");
+            return req;
+        });
+        if (!resp.IsSuccessStatusCode) return null;
         using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
         if (!doc.RootElement.TryGetProperty("items", out var items)) return null;
         // Dépôts au nom de l'application (« ganymede », « ganymede-app », « ganymede-desktop »…)
@@ -703,7 +838,7 @@ public static class OnlineClassifier
         foreach (var lang in new[] { "fr", "en" })
         {
             var url = $"https://www.wikidata.org/w/api.php?action=wbsearchentities&format=json&type=item&limit=7&language={lang}&uselang={lang}&search={Uri.EscapeDataString(clean)}";
-            using var doc = JsonDocument.Parse(await Http.GetStringAsync(url));
+            using var doc = JsonDocument.Parse(await GetStringAsync("Wikidata", url));
             if (!doc.RootElement.TryGetProperty("search", out var results)) continue;
             // Le libellé doit correspondre au nom de l'appli pour éviter les homonymes
             var ids = results.EnumerateArray()
@@ -728,7 +863,7 @@ public static class OnlineClassifier
     private static async Task<List<string>> WikidataFacts(string qid)
     {
         var res = new List<string>();
-        using var doc = JsonDocument.Parse(await Http.GetStringAsync(
+        using var doc = JsonDocument.Parse(await GetStringAsync("Wikidata",
             $"https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&props=claims&ids={qid}"));
         if (!doc.RootElement.TryGetProperty("entities", out var ents) || !ents.TryGetProperty(qid, out var ent)
             || !ent.TryGetProperty("claims", out var claims)) return res;
@@ -741,7 +876,7 @@ public static class OnlineClassifier
                         values.Add(vid.GetString());
         values = values.Distinct().Take(20).ToList();
         if (values.Count == 0) return res;
-        using var labels = JsonDocument.Parse(await Http.GetStringAsync(
+        using var labels = JsonDocument.Parse(await GetStringAsync("Wikidata",
             $"https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&props=labels&languages=en|fr&ids={string.Join("|", values)}"));
         if (!labels.RootElement.TryGetProperty("entities", out var le)) return res;
         foreach (var e in le.EnumerateObject())
