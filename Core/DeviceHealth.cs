@@ -335,20 +335,54 @@ public static partial class DeviceHealth
         @"hyper-v|virtualbox|vmware|vethernet|wsl|tap-|tunnel|loopback|bluetooth|wan miniport|npcap|zerotier|tailscale|wireguard|openvpn|nordlynx|pseudo",
         System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
+    /// <summary>
+    /// Cartes réseau actives (hors cartes virtuelles). Windows peut refuser la liste pendant qu'une carte change d'état
+    /// (Wi-Fi qui se reconnecte, VPN, sortie de veille) : nouvel essai, et une carte illisible est ignorée sans bloquer les autres.
+    /// Null si la liste reste illisible.
+    /// </summary>
+    internal static async Task<List<(string kind, string description, string speed)>> ActiveAdaptersAsync(Func<NetworkInterface[]> list = null)
+    {
+        list ??= NetworkInterface.GetAllNetworkInterfaces;
+        for (int attempt = 0; attempt < 3; attempt++)
+        {
+            NetworkInterface[] all;
+            try { all = list(); }
+            catch (NetworkInformationException)
+            {
+                await Task.Delay(400 * (attempt + 1));
+                continue;
+            }
+            var res = new List<(string, string, string)>();
+            foreach (var n in all)
+            {
+                try
+                {
+                    if (n.OperationalStatus != OperationalStatus.Up || n.NetworkInterfaceType is NetworkInterfaceType.Loopback or NetworkInterfaceType.Tunnel
+                        || VirtualAdapter.IsMatch(n.Description + " " + n.Name)) continue;
+                    var kind = n.NetworkInterfaceType == NetworkInterfaceType.Wireless80211 ? "Wi-Fi" : n.NetworkInterfaceType == NetworkInterfaceType.Ethernet ? "Câble (Ethernet)" : "Réseau";
+                    long bps = 0;
+                    try { bps = n.Speed; } catch (NetworkInformationException) { }
+                    var speed = bps > 0 ? $" · {(bps >= 1_000_000_000 ? $"{bps / 1e9:0.#} Gbit/s" : $"{bps / 1e6:0} Mbit/s")}" : "";
+                    res.Add((kind, n.Description, speed));
+                }
+                catch (NetworkInformationException) { }   // carte qui disparaît ou se reconfigure : ignorée
+            }
+            return res;
+        }
+        Log.Info("Réseau : liste des cartes indisponible (Windows occupé), test d'Internet seul");
+        return null;
+    }
+
     private static async Task<DeviceCard> Network()
     {
         var c = new DeviceCard { Key = "network", Title = "Réseau et Internet", Glyph = "\uE701", Color = "#3B82F6", SettingsUri = "ms-settings:network-status" };
-        var up = NetworkInterface.GetAllNetworkInterfaces()
-            .Where(n => n.OperationalStatus == OperationalStatus.Up && n.NetworkInterfaceType is not (NetworkInterfaceType.Loopback or NetworkInterfaceType.Tunnel)
-                        && !VirtualAdapter.IsMatch(n.Description + " " + n.Name))
-            .ToList();
-        foreach (var n in up)
-        {
-            var kind = n.NetworkInterfaceType == NetworkInterfaceType.Wireless80211 ? "Wi-Fi" : n.NetworkInterfaceType == NetworkInterfaceType.Ethernet ? "Câble (Ethernet)" : "Réseau";
-            var speed = n.Speed > 0 ? $" · {(n.Speed >= 1_000_000_000 ? $"{n.Speed / 1e9:0.#} Gbit/s" : $"{n.Speed / 1e6:0} Mbit/s")}" : "";
-            c.Lines.Add($"{kind} : {n.Description}{speed}");
-        }
-        if (up.Count == 0)
+        var up = await ActiveAdaptersAsync();
+        if (up == null)
+            // Windows n'a pas pu lister les cartes (l'une d'elles changeait d'état) : le test d'Internet ci-dessous reste valable
+            c.Lines.Add("Cartes réseau : liste momentanément indisponible, réessayez dans un instant.");
+        else foreach (var (kind, description, speed) in up)
+            c.Lines.Add($"{kind} : {description}{speed}");
+        if (up != null && up.Count == 0)
         {
             c.Issues.Add(new DeviceIssue
             {

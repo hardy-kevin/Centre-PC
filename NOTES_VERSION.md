@@ -1,3 +1,3 @@
-## Centre PC 1.2.12
+## Centre PC 1.2.13
 
-- Optimisation des rate limit permettant de catégoriser les applications
+- Bilan réseau : Une carte qui ne répond pas est ignorée sans bloquer les autres, Nom des applications du Store: Amélioration de la détection, Mise à jour du catalogue applicatif

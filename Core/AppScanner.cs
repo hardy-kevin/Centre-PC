@@ -161,8 +161,9 @@ public static class AppScanner
             }
             await Task.Run(() =>
             {
-                foreach (var (name, id, link) in shellApps)
+                foreach (var (shellName, id, link) in shellApps)
                 {
+                    var name = shellName;
                     if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(id)) continue;
                     if (apps.ContainsKey(name)) continue;
                     // Les entrées qui sont des URL ou des fichiers déjà couverts sont ignorées
@@ -172,7 +173,7 @@ public static class AppScanner
                     {
                         // Windows affiche ce nom dans le menu Démarrer : c'est celui de la langue de l'utilisateur
                         // (un raccourci du bureau garde le nom que l'utilisateur lui a donné)
-                        if (same.Location == ItemLocation.StartMenu && !same.Name.Equals(name, StringComparison.CurrentCultureIgnoreCase) && !apps.ContainsKey(name))
+                        if (same.Location == ItemLocation.StartMenu && !LooksLikePackageId(name, id) && !same.Name.Equals(name, StringComparison.CurrentCultureIgnoreCase) && !apps.ContainsKey(name))
                         {
                             apps.Remove(same.Name);
                             same.Name = name;
@@ -186,8 +187,21 @@ public static class AppScanner
                         Name = name, Aumid = id, Target = path != null && link != null ? link : id, Location = ItemLocation.Store,
                         IsCompanion = IsCompanionName(name)
                     };
+                    string shown = null;
                     if (path != null && File.Exists(path)) Describe(item, path);
-                    else DescribeStoreApp(item);
+                    else shown = DescribeStoreApp(item);
+                    // Windows n'a pas su lire le nom de l'application et donne son identifiant technique
+                    // (« 32739DavidXanatos.UpdateManagerforWindows ») : nom du manifeste, sinon identifiant rendu lisible
+                    if (LooksLikePackageId(name, id))
+                    {
+                        var readable = !string.IsNullOrWhiteSpace(shown) && !LooksLikePackageId(shown, id) ? shown.Trim() : ReadablePackageName(name);
+                        if (!string.IsNullOrWhiteSpace(readable) && !apps.ContainsKey(readable))
+                        {
+                            name = readable;
+                            item.Name = name;
+                            item.IsCompanion = IsCompanionName(name);
+                        }
+                    }
                     item.Context = string.IsNullOrEmpty(item.Context) ? id : id + " | " + item.Context;
                     item.Theme = Settings.Classify(name, id, item.Context, item.LooksLikeGame);
                     apps[name] = item;
@@ -595,27 +609,56 @@ public static class AppScanner
     // ------------------------------------------------------------------ applications du Microsoft Store
     private const string PackageRepository = @"Software\Classes\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\Repository\Packages";
 
-    /// <summary>Éditeur et description d'une application du Store, lus dans son manifeste (AppxManifest.xml).</summary>
-    internal static void DescribeStoreApp(AppItem item)
+    /// <summary>
+    /// Windows affiche l'identifiant du paquet au lieu du nom (« 32739DavidXanatos.UpdateManagerforWindows ») : le nom est
+    /// exactement le nom du paquet contenu dans l'identifiant de l'application (« …_8wekyb3d8bbwe!App »). Un vrai nom qui
+    /// contient un point (« Paint.NET », « Node.js ») n'est jamais concerné.
+    /// </summary>
+    internal static bool LooksLikePackageId(string name, string aumid)
+    {
+        if (string.IsNullOrWhiteSpace(name) || string.IsNullOrEmpty(aumid)) return false;
+        int bang = aumid.IndexOf('!');
+        var family = bang > 0 ? aumid.Substring(0, bang) : aumid;
+        int us = family.LastIndexOf('_');
+        var package = us > 0 ? family.Substring(0, us) : family;
+        return name.Trim().Equals(package, StringComparison.OrdinalIgnoreCase) && package.Contains('.');
+    }
+
+    /// <summary>Identifiant de paquet rendu lisible : dernier segment, mots séparés (« UpdateManagerforWindows » → « Update Manager for Windows »).</summary>
+    internal static string ReadablePackageName(string id)
+    {
+        var last = id.Trim().Split('.').Last().Replace('_', ' ').Replace('-', ' ');
+        var spaced = Regex.Replace(last, @"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])", " ");
+        // « for » collé en minuscules (« Managerfor Windows ») : séparé quand un mot capitalisé suit. Les autres petits mots
+        // ne sont pas touchés : ils terminent trop de vrais mots (« Photo », « Command »).
+        spaced = Regex.Replace(spaced, @"(?<=[a-z]{3})for(?= [A-Z])", " for");
+        return Regex.Replace(spaced, @"\s+", " ").Trim();
+    }
+
+    /// <summary>
+    /// Éditeur et description d'une application du Store, lus dans son manifeste (AppxManifest.xml).
+    /// Renvoie le nom affiché déclaré par le manifeste (ou null).
+    /// </summary>
+    internal static string DescribeStoreApp(AppItem item)
     {
         try
         {
             var aumid = item.Aumid ?? "";
             int bang = aumid.IndexOf('!');
-            if (bang <= 0) return;
+            if (bang <= 0) return null;
             var family = aumid.Substring(0, bang);
             int us = family.LastIndexOf('_');
-            if (us <= 0) return;
+            if (us <= 0) return null;
             string pkgName = family.Substring(0, us), pubId = family.Substring(us + 1);
             using var repo = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(PackageRepository);
             var full = repo?.GetSubKeyNames().Where(k => k.StartsWith(pkgName + "_", StringComparison.OrdinalIgnoreCase)
                                                          && k.EndsWith("_" + pubId, StringComparison.OrdinalIgnoreCase))
                                              .OrderByDescending(k => k).FirstOrDefault();
-            if (full == null) return;
+            if (full == null) return null;
             using var k2 = repo.OpenSubKey(full);
             var root = k2?.GetValue("PackageRootFolder") as string;
             var manifest = root == null ? null : Path.Combine(root, "AppxManifest.xml");
-            if (manifest == null || !File.Exists(manifest)) return;
+            if (manifest == null || !File.Exists(manifest)) return null;
             var x = System.Xml.Linq.XDocument.Load(manifest);
             string Res(string v)
             {
@@ -633,8 +676,11 @@ public static class AppScanner
             var parts = new[] { publisher, desc, Res(visual) }.Where(s => !string.IsNullOrWhiteSpace(s)).Distinct().ToList();
             item.Publisher = Clean(publisher);
             item.Context = string.Join(" | ", parts);
+            var displayName = Res(x.Descendants().FirstOrDefault(e => e.Name.LocalName == "VisualElements")?.Attribute("DisplayName")?.Value)
+                              ?? Res(props?.Elements().FirstOrDefault(e => e.Name.LocalName == "DisplayName")?.Value);
+            return string.IsNullOrWhiteSpace(displayName) ? null : displayName;
         }
-        catch { }
+        catch { return null; }
     }
 
     private static readonly Regex GameFolders = new(

@@ -1,8 +1,11 @@
 {
-  "Version": 3,
-  "Date": "2026-11-27",
+  "Version": 4,
+  "Date": "2026-11-28",
   "Classement": {
-    "Adobe Redeem Launcher": "Photo et graphisme"
+    "Adobe Redeem Launcher": "Photo et graphisme",
+    "Cortana": "Outils Windows",
+    "ngrok": "Développement",
+    "Portail de réalité mixte": "Outils Windows"
   },
   "Desactive": []
 }
