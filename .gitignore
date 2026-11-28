@@ -5,6 +5,8 @@ publish/
 *.user
 build.log
 verification.log
+# Journaux de travail (chemins du PC, sorties d'outils) : jamais publiés
+*.log
 # Fichiers locaux de Wrangler (Cloudflare) : jamais publiés
 Serveur/.wrangler/
 Serveur/node_modules/
